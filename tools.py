@@ -65,6 +65,9 @@ def is_destructive(command):
     return any(pattern in lowered for pattern in DESTRUCTIVE_PATTERNS)
 
 
+MAX_OUTPUT_CHARS = 3000
+
+
 def run_shell(command):
     if is_destructive(command):
         print(f"\njoebot wants to run a DESTRUCTIVE command:\n  {command}\n")
@@ -84,6 +87,15 @@ def run_shell(command):
         )
         output = result.stdout.strip()
         error = result.stderr.strip()
+
+        if len(output) > MAX_OUTPUT_CHARS:
+            output = (
+                output[:MAX_OUTPUT_CHARS]
+                + f"\n...[output truncated, {len(output)} total characters, "
+                  f"showing first {MAX_OUTPUT_CHARS}]"
+            )
+        if len(error) > MAX_OUTPUT_CHARS:
+            error = error[:MAX_OUTPUT_CHARS] + "\n...[error output truncated]"
 
         response = ""
         if output:
