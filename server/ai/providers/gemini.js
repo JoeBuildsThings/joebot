@@ -1,3 +1,25 @@
+function stripUnsupportedSchemaKeys(node) {
+  if (Array.isArray(node)) {
+    return node.map(stripUnsupportedSchemaKeys);
+  }
+
+  if (node && typeof node === 'object') {
+    const cleaned = {};
+
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'additionalProperties' || key === '$schema') {
+        continue;
+      }
+
+      cleaned[key] = stripUnsupportedSchemaKeys(value);
+    }
+
+    return cleaned;
+  }
+
+  return node;
+}
+
 export async function generate({messages, model, tools, toolChoice}) {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -21,7 +43,7 @@ export async function generate({messages, model, tools, toolChoice}) {
             functionDeclarations: tools.map(tool => ({
               name: tool.function.name,
               description: tool.function.description,
-              parameters: tool.function.parameters
+              parameters: stripUnsupportedSchemaKeys(tool.function.parameters)
             }))
           }
         ]
