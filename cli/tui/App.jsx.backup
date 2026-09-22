@@ -1,0 +1,716 @@
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
+
+import {
+  Box,
+  Text,
+  useApp,
+  useInput,
+  render
+} from 'ink';
+
+import {TextInput} from '@inkjs/ui';
+
+import {
+  COMMANDS,
+  Header,
+  Message,
+  ApprovalCard,
+  CommandMenu,
+  StatusBar
+} from './components.jsx';
+
+function App() {
+  const {exit} = useApp();
+
+  const [input, setInput] = useState('');
+  const [inputKey, setInputKey] = useState(0);
+  const [selected, setSelected] = useState(0);
+  const [messages, setMessages] = useState([]);
+
+  const [busy, setBusy] = useState(false);
+  const [agent, setAgent] = useState(null);
+
+  const [provider, setProvider] = useState(null);
+  const [model, setModel] = useState(null);
+
+  const [approval, setApproval] = useState(null);
+
+  const approvalResolver = useRef(null);
+  const currentMessage = useRef(null);
+  const interrupted = useRef(false);
+
+  const matches = useMemo(() => {
+    if (!input.startsWith('/')) {
+      return [];
+    }
+
+    return COMMANDS.filter(([command]) =>
+      command.startsWith(input.toLowerCase())
+    );
+  }, [input]);
+
+  /*
+   * Load the agent once.
+   */
+  useEffect(() => {
+    let mounted = true;
+
+    import('../agent.js')
+      .then(module => {
+        if (!mounted) {
+          return;
+        }
+
+        const Agent = module.default || module;
+
+        const instance = new Agent({
+          onTool(event) {
+            const messageId = currentMessage.current;
+
+            if (!messageId) {
+              return;
+            }
+
+            setMessages(previous =>
+              previous.map(message => {
+                if (message.id !== messageId) {
+                  return message;
+                }
+
+                const events = [
+                  ...(message.events || [])
+                ];
+
+                const existingIndex = events.findIndex(
+                  existing =>
+                    existing.tool === event.tool &&
+                    existing.phase === 'requested' &&
+                    event.phase !== 'requested'
+                );
+
+                if (
+                  event.phase === 'completed' ||
+                  event.phase === 'denied'
+                ) {
+                  if (existingIndex >= 0) {
+                    events[existingIndex] = event;
+                  } else {
+                    events.push(event);
+                  }
+                } else {
+                  events.push(event);
+                }
+
+                return {
+                  ...message,
+                  events
+                };
+              })
+            );
+          },
+
+          async approveTool(request) {
+            return new Promise(resolve => {
+              approvalResolver.current = resolve;
+              setApproval(request);
+            });
+          }
+        });
+
+        setAgent(instance);
+      })
+      .catch(error => {
+        console.error(
+          'Failed to load JOEBOT agent:',
+          error
+        );
+
+        setAgent(null);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  /*
+   * Keyboard controls.
+   */
+  useInput((value, key) => {
+    /*
+     * Ctrl+C always exits.
+     */
+    if (key.ctrl && value === 'c') {
+      exit();
+      return;
+    }
+
+    /*
+     * Approval prompt.
+     */
+    if (approval) {
+      if (value.toLowerCase() === 'y') {
+        const resolve = approvalResolver.current;
+
+        approvalResolver.current = null;
+        setApproval(null);
+
+        if (resolve) {
+          resolve(true);
+        }
+
+        return;
+      }
+
+      if (
+        value.toLowerCase() === 'n' ||
+        key.escape
+      ) {
+        const resolve = approvalResolver.current;
+
+        approvalResolver.current = null;
+        setApproval(null);
+
+        if (resolve) {
+          resolve(false);
+        }
+
+        return;
+      }
+
+      return;
+    }
+
+    /*
+     * Escape while busy.
+     */
+    if (key.escape && busy) {
+      interrupted.current = true;
+      return;
+    }
+
+    /*
+     * Escape closes command menu.
+     */
+    if (
+      key.escape &&
+      input.startsWith('/')
+    ) {
+      setInput('');
+      setSelected(0);
+      return;
+    }
+
+    /*
+     * Slash command navigation.
+     */
+    if (
+      input.startsWith('/') &&
+      matches.length > 0
+    ) {
+      if (key.upArrow) {
+        setSelected(current =>
+          current <= 0
+            ? matches.length - 1
+            : current - 1
+        );
+
+        return;
+      }
+
+      if (key.downArrow) {
+        setSelected(current =>
+          current >= matches.length - 1
+            ? 0
+            : current + 1
+        );
+
+        return;
+      }
+
+      if (key.tab) {
+        setInput(
+          matches[selected]?.[0] || input
+        );
+
+        return;
+      }
+    }
+  });
+
+  /*
+   * Add a UI message.
+   *
+   * Centralizing message creation prevents
+   * different parts of the TUI from accidentally
+   * creating duplicate entries.
+   */
+  function addMessage(message) {
+    setMessages(previous => [
+      ...previous,
+      {
+        id:
+          message.id ||
+          `${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2)}`,
+        ...message
+      }
+    ]);
+  }
+
+  /*
+   * Slash commands.
+   */
+  async function runCommand(command) {
+    switch (command) {
+      case '/exit':
+        exit();
+        return;
+
+      case '/clear':
+        setMessages([]);
+
+        if (agent?.clear) {
+          agent.clear();
+        }
+
+        break;
+
+      case '/help':
+        addMessage({
+          input: command,
+          reply: COMMANDS
+            .map(
+              ([name, description]) =>
+                `${name.padEnd(16)} ${description}`
+            )
+            .join('\n')
+        });
+
+        break;
+
+      case '/status':
+        addMessage({
+          input: command,
+          reply:
+            'JOEBOT online\n\n' +
+            'Runtime: Termux\n' +
+            'TUI: Ink\n' +
+            `Agent: ${
+              agent ? 'connected' : 'loading'
+            }\n` +
+            `Provider: ${
+              provider || 'auto'
+            }\n` +
+            `Model: ${
+              model || 'auto'
+            }`
+        });
+
+        break;
+
+      case '/tools':
+        try {
+          const module = await import(
+            '../../server/tools/index.js'
+          );
+
+          const getTools =
+            module.getTools ||
+            module.default?.getTools;
+
+          const available =
+            typeof getTools === 'function'
+              ? getTools()
+              : [];
+
+          addMessage({
+            input: command,
+            reply: available.length
+              ? available
+                  .map(
+                    tool =>
+                      `${tool.name.padEnd(18)} ${
+                        tool.requiresApproval
+                          ? 'approval required'
+                          : 'automatic'
+                      }`
+                  )
+                  .join('\n')
+              : 'No tools registered.'
+          });
+        } catch {
+          addMessage({
+            input: command,
+            reply:
+              'Unable to load tool registry.'
+          });
+        }
+
+        break;
+
+      case '/permissions':
+        addMessage({
+          input: command,
+          reply:
+            'JOEBOT permissions\n\n' +
+            'read_file       automatic\n' +
+            'list_files      automatic\n' +
+            'search_code     automatic\n' +
+            'write_file      approval required\n\n' +
+            'Shell           disabled\n' +
+            'Network         provider controlled'
+        });
+
+        break;
+
+      case '/plan':
+        addMessage({
+          input: command,
+          reply:
+            'Planning mode\n\n' +
+            '1. Understand request\n' +
+            '2. Inspect project\n' +
+            '3. Build implementation plan\n' +
+            '4. Request approval\n' +
+            '5. Implement\n' +
+            '6. Verify changes\n\n' +
+            'Dedicated plan execution is coming next.'
+        });
+
+        break;
+
+      case '/doctor':
+        addMessage({
+          input: command,
+          reply:
+            'JOEBOT diagnostics\n\n' +
+            `Agent: ${
+              agent ? 'OK' : 'NOT READY'
+            }\n` +
+            'TUI: OK\n' +
+            'Tool registry: OK\n' +
+            'Filesystem sandbox: OK\n' +
+            `AI provider: ${
+              provider || 'AUTO'
+            }`
+        });
+
+        break;
+
+      case '/memory':
+        try {
+          const module = await import(
+            '../../server/ai/profileMemory.js'
+          );
+
+          const memory =
+            module.default || module;
+
+          let result;
+
+          if (typeof memory === 'function') {
+            result = await memory();
+          } else if (
+            typeof memory.getAll === 'function'
+          ) {
+            result = await memory.getAll();
+          } else if (
+            typeof memory.get === 'function'
+          ) {
+            result = await memory.get();
+          }
+
+          addMessage({
+            input: command,
+            reply: result
+              ? JSON.stringify(
+                  result,
+                  null,
+                  2
+                )
+              : 'Memory system loaded.'
+          });
+        } catch {
+          addMessage({
+            input: command,
+            reply:
+              'Unable to read the memory module.'
+          });
+        }
+
+        break;
+
+      case '/chats':
+        addMessage({
+          input: command,
+          reply:
+            'Conversation manager detected.\n' +
+            'Persistent chat browser will be connected next.'
+        });
+
+        break;
+
+      case '/compact':
+        addMessage({
+          input: command,
+          reply:
+            'Context compaction is not enabled yet.\n' +
+            `Current context: ${
+              agent?.getContextSize?.() || 0
+            } messages.`
+        });
+
+        break;
+
+      default:
+        addMessage({
+          input: command,
+          reply:
+            `Command ${command} is not implemented yet.`
+        });
+    }
+
+    setInput('');
+    setSelected(0);
+  }
+
+  /*
+   * Submit user input.
+   */
+  async function submit(value) {
+    const text = value.trim();
+
+    if (
+      !text ||
+      busy ||
+      approval
+    ) {
+      return;
+    }
+
+    /*
+     * Clear the live input FIRST.
+     *
+     * This is important.
+     *
+     * The submitted text belongs to the
+     * conversation history from this point
+     * forward. It must never remain inside
+     * the live TextInput while the response
+     * is being rendered.
+     */
+    setInput('');
+    setSelected(0);
+
+    /*
+     * Slash commands.
+     */
+    if (text.startsWith('/')) {
+      const exact = COMMANDS.find(
+        ([command]) => command === text
+      );
+
+      if (exact) {
+        await runCommand(exact[0]);
+        return;
+      }
+
+      /*
+       * If the user typed only "/",
+       * select the highlighted command.
+       */
+      if (
+        text === '/' &&
+        matches.length > 0
+      ) {
+        setInput(
+          matches[selected]?.[0] || '/'
+        );
+
+        return;
+      }
+
+      addMessage({
+        input: text,
+        reply:
+          `Unknown command: ${text}. ` +
+          'Type / for commands.'
+      });
+
+      return;
+    }
+
+    /*
+     * Agent loading.
+     */
+    if (!agent) {
+      addMessage({
+        input: text,
+        reply:
+          'Agent is still starting. Try again in a moment.'
+      });
+
+      return;
+    }
+
+    /*
+     * Create exactly ONE conversation
+     * message for this request.
+     */
+    const id =
+      `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+
+    currentMessage.current = id;
+    interrupted.current = false;
+
+    setBusy(true);
+
+    setMessages(previous => [
+      ...previous,
+      {
+        id,
+        input: text,
+        busy: true,
+        events: [],
+        reply: ''
+      }
+    ]);
+
+    try {
+      const result =
+        await agent.ask(text);
+
+      setProvider(result.provider);
+      setModel(result.model);
+
+      setMessages(previous =>
+        previous.map(message => {
+          if (message.id !== id) {
+            return message;
+          }
+
+          return {
+            ...message,
+            busy: false,
+            reply:
+              interrupted.current
+                ? 'Request completed after interrupt.'
+                : result.reply ||
+                  'No response returned.'
+          };
+        })
+      );
+    } catch (error) {
+      setMessages(previous =>
+        previous.map(message => {
+          if (message.id !== id) {
+            return message;
+          }
+
+          return {
+            ...message,
+            busy: false,
+            reply:
+              `Agent error: ${error.message}`
+          };
+        })
+      );
+    } finally {
+      setBusy(false);
+
+      /*
+       * Do NOT remove the message here.
+       *
+       * It belongs permanently to the
+       * conversation history.
+       *
+       * We only clear the reference used
+       * by tool events.
+       */
+      currentMessage.current = null;
+    }
+  }
+
+  return (
+    <Box
+      flexDirection="column"
+      padding={1}
+    >
+      <Header
+        busy={busy}
+        provider={provider}
+        model={model}
+      />
+
+      <Box flexDirection="column">
+        {messages.map(message => (
+          <Message
+            key={message.id}
+            item={message}
+          />
+        ))}
+      </Box>
+
+      {approval && (
+        <ApprovalCard
+          approval={approval}
+        />
+      )}
+
+      <Box flexDirection="column">
+        <Box>
+          <Text
+            color="cyan"
+            bold
+          >
+            ❯{' '}
+          </Text>
+
+          <TextInput
+            key={inputKey}
+            onChange={value => {
+              if (busy || approval) {
+                return;
+              }
+
+              setInput(value);
+              setSelected(0);
+            }}
+            onSubmit={submit}
+            placeholder={
+              busy
+                ? 'JOEBOT is working...'
+                : 'Ask JOEBOT anything...'
+            }
+          />
+        </Box>
+
+        {!busy && !approval && (
+          <CommandMenu
+            query={input}
+            selected={selected}
+          />
+        )}
+      </Box>
+
+      <StatusBar
+        busy={busy}
+        context={
+          agent?.getContextSize?.() || 0
+        }
+        approval={approval}
+      />
+    </Box>
+  );
+}
+
+render(<App />);

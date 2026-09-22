@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#111b21">
+  <title>JOEBOT</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+<div class="app">
+
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+  <aside class="sidebar" id="sidebar">
+
+    <div class="sidebar-header">
+      <div class="brand">
+        <div class="brand-logo"><span class="logo-crown">♛</span><span class="logo-letter">J</span></div>
+
+        <div>
+          <strong>JOEBOT</strong>
+          <span>Personal AI</span>
+        </div>
+      </div>
+
+      <button class="icon-button mobile-only" id="closeSidebar" aria-label="Close sidebar">
+        ×
+      </button>
+    </div>
+
+    <button class="new-chat-button" id="newChat">
+      <span class="new-chat-icon">＋</span>
+      <span>New chat</span>
+    </button>
+
+    <div class="chat-history">
+
+      <div class="history-heading">
+        <span>CHATS</span>
+      </div>
+
+      <div id="chatList" class="chat-list">
+        <div class="history-loading">
+          Loading chats...
+        </div>
+      </div>
+
+    </div>
+
+    <div class="sidebar-footer">
+
+      <button class="sidebar-action" id="memoryButton">
+        <span>◇</span>
+        <span>Memory</span>
+      </button>
+
+      <button class="sidebar-action" id="statusButton">
+        <span>●</span>
+        <span>System status</span>
+      </button>
+
+    </div>
+
+  </aside>
+
+
+  <main class="main">
+
+    <header class="topbar">
+
+      <button class="icon-button mobile-only" id="openSidebar" aria-label="Open sidebar">
+        ☰
+      </button>
+
+      <div class="conversation-heading">
+        <div class="mobile-brand">
+          <div class="brand-logo small"><span class="logo-crown">♛</span><span class="logo-letter">J</span></div>
+          <strong>JOEBOT</strong>
+        </div>
+
+        <div class="desktop-chat-title" id="desktopChatTitle">
+          New conversation
+        </div>
+      </div>
+
+      <button class="icon-button" id="moreButton" aria-label="More options">
+        ⋮
+      </button>
+
+    </header>
+
+
+    <section class="chat-area" id="chatArea">
+
+      <div class="welcome" id="welcome">
+
+        <div class="welcome-logo"><span class="logo-crown">♛</span><span class="logo-letter">J</span></div>
+
+        <h1>How can I help?</h1>
+
+        <p>
+          Your personal AI for coding, projects,
+          questions and everyday work.
+        </p>
+
+        <div class="quick-actions">
+
+          <button class="quick-action" data-message="Help me with some code">
+            <span>⌘</span>
+            <div>
+              <strong>Help me code</strong>
+              <small>Debug or build something</small>
+            </div>
+          </button>
+
+          
+
+          <button class="quick-action" data-message="Help me understand my project">
+            <span>◇</span>
+            <div>
+              <strong>Work on a project</strong>
+              <small>Plan, build or debug</small>
+            </div>
+          </button>
+
+          <button class="quick-action" data-message="Check JOEBOT system status">
+            <span>●</span>
+            <div>
+              <strong>System status</strong>
+              <small>Check the assistant</small>
+            </div>
+          </button>
+
+        </div>
+
+      </div>
+
+      <div id="messages" class="messages"></div>
+
+    </section>
+
+
+    <div class="composer-area">
+
+      <div id="attachmentPreview" class="attachment-preview"></div>
+
+      <div class="composer">
+
+        <input
+          type="file"
+          id="imageInput"
+          accept="image/*"
+          hidden
+        >
+
+        <button
+          class="composer-button"
+          id="attachButton"
+          aria-label="Attach image"
+          title="Attach image"
+        >
+          ＋
+        </button>
+
+        <textarea
+          id="messageInput"
+          rows="1"
+          maxlength="20000"
+          placeholder="Message JOEBOT..."
+        ></textarea>
+
+        <button
+          class="send-button"
+          id="sendButton"
+          aria-label="Send message"
+          title="Send"
+        >
+          ↑
+        </button>
+
+      </div>
+
+      <div class="composer-tools">
+
+        
+
+        <span class="composer-disclaimer">
+          JOEBOT can make mistakes.
+        </span>
+
+      </div>
+
+    </div>
+
+  </main>
+
+</div>
+
+
+<div class="modal hidden" id="memoryModal">
+
+  <div class="modal-card">
+
+    <div class="modal-header">
+      <div>
+        <strong>Personal memory</strong>
+        <span>Things JOEBOT remembers across chats</span>
+      </div>
+
+      <button class="icon-button" id="closeMemory">
+        ×
+      </button>
+    </div>
+
+    <div id="memoryList" class="memory-list"></div>
+
+    <button class="danger-button" id="clearMemory">
+      Clear all memories
+    </button>
+
+  </div>
+
+</div>
+
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script src="/app.js"></script>
+
+</body>
+</html>
