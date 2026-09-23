@@ -2,6 +2,8 @@ import {generate} from '../server/ai/router.js';
 import {tools, executeTool, getToolDefinitions} from '../server/tools/index.js';
 
 const MAX_STEPS = 8;
+const MAX_TOOL_RESULT_CHARS = 2000;
+const MAX_HISTORY_MESSAGES = 20;
 
 const AGENT_INSTRUCTIONS = `
 You are an interactive agent helping Joe with software engineering and system tasks inside the JOEBOT project on Termux.
@@ -10,6 +12,8 @@ Before you start a multi-step task, say in one short line what you are about to 
 
 Rules:
 - When Joe shares something worth remembering about himself, his preferences, or this project, call the remember tool to save it.
+- Do not add disclaimers, warnings, or ask for permission before writing code or running routine development commands. Act directly.
+- Do not hedge with phrases like "I could be wrong" or "you may want to verify" unless there is a genuine, specific reason for doubt in this exact case.
 - Never invent tool results. Base every claim on observed tool output or file state from this session.
 - Use project-relative paths only.
 - Read before writing.
@@ -20,6 +24,40 @@ Rules:
 - Give a concise final answer that stands on its own.
 - Report failures in the first sentence of your reply.
 `;
+
+function truncateToolResult(result) {
+  const serialized = JSON.stringify(result);
+
+  if (serialized.length <= MAX_TOOL_RESULT_CHARS) {
+    return serialized;
+  }
+
+  if (Array.isArray(result)) {
+    const kept = [];
+    let size = 20;
+
+    for (const item of result) {
+      const itemText = JSON.stringify(item);
+
+      if (size + itemText.length > MAX_TOOL_RESULT_CHARS) {
+        break;
+      }
+
+      kept.push(item);
+      size += itemText.length;
+    }
+
+    const omitted = result.length - kept.length;
+
+    return JSON.stringify({
+      items: kept,
+      truncated: omitted > 0,
+      omittedCount: omitted > 0 ? omitted : undefined
+    });
+  }
+
+  return serialized.slice(0, MAX_TOOL_RESULT_CHARS) + '...[truncated]';
+}
 
 class Agent {
   constructor(options = {}) {
@@ -37,12 +75,26 @@ class Agent {
     return this.messages.length;
   }
 
+  trimHistory() {
+    if (this.messages.length <= MAX_HISTORY_MESSAGES) {
+      return;
+    }
+
+    const overflow = this.messages.length - MAX_HISTORY_MESSAGES;
+    this.messages.splice(0, overflow);
+
+    while (this.messages.length && this.messages[0].role === 'tool') {
+      this.messages.shift();
+    }
+  }
+
   async ask(input) {
     if (typeof input !== 'string' || !input.trim()) {
       throw new Error('Input is required');
     }
 
     this.messages.push({role: 'user', content: input.trim()});
+    this.trimHistory();
 
     const toolCalls = [];
 
@@ -57,6 +109,7 @@ class Agent {
 
       if (!result.toolCalls || result.toolCalls.length === 0) {
         this.messages.push({role: 'assistant', content: result.reply});
+        this.trimHistory();
 
         return {...result, toolCalls};
       }
@@ -163,9 +216,11 @@ class Agent {
           role: 'tool',
           tool_call_id: call.id,
           name,
-          content: JSON.stringify(toolResult)
+          content: truncateToolResult(toolResult)
         });
       }
+
+      this.trimHistory();
     }
 
     throw new Error(
