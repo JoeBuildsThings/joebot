@@ -4,11 +4,32 @@ import os from 'os';
 
 const PROJECT_ROOT = process.cwd();
 const HOME = os.homedir();
-const STORAGE_ROOT = path.join(HOME, 'storage', 'shared');
-
-const ALLOWED_ROOTS = [PROJECT_ROOT, STORAGE_ROOT];
+const STORAGE_LINK = path.join(HOME, 'storage', 'shared');
 
 const BLOCKED_NAMES = ['.env', '.git', '.ssh', 'node_modules', '.git-credentials'];
+
+let allowedRootsPromise = null;
+
+async function getAllowedRoots() {
+  if (allowedRootsPromise) {
+    return allowedRootsPromise;
+  }
+
+  allowedRootsPromise = (async () => {
+    const roots = [PROJECT_ROOT];
+
+    try {
+      const resolvedStorage = await fs.realpath(STORAGE_LINK);
+      roots.push(resolvedStorage);
+    } catch {
+      // Storage not set up yet, project root only.
+    }
+
+    return roots;
+  })();
+
+  return allowedRootsPromise;
+}
 
 function isWithin(root, target) {
   const relative = path.relative(root, target);
@@ -16,7 +37,11 @@ function isWithin(root, target) {
 }
 
 async function resolveSafePath(inputPath) {
-  const base = path.isAbsolute(inputPath) ? inputPath : path.resolve(PROJECT_ROOT, inputPath);
+  const expanded = inputPath.startsWith('~')
+    ? path.join(HOME, inputPath.slice(1))
+    : inputPath;
+
+  const base = path.isAbsolute(expanded) ? expanded : path.resolve(PROJECT_ROOT, expanded);
 
   let resolved;
 
@@ -26,7 +51,8 @@ async function resolveSafePath(inputPath) {
     resolved = path.resolve(base);
   }
 
-  const withinAllowedRoot = ALLOWED_ROOTS.some(root => isWithin(root, resolved));
+  const allowedRoots = await getAllowedRoots();
+  const withinAllowedRoot = allowedRoots.some(root => isWithin(root, resolved));
 
   if (!withinAllowedRoot) {
     throw new Error('Path is outside the allowed project and storage folders.');
