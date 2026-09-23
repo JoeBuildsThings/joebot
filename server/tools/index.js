@@ -3,6 +3,7 @@ import {searchCode} from './search.js';
 import {runCommand} from './shell.js';
 import {searchWeb} from './websearch.js';
 import {searchComposioAction, executeComposioAction} from './composio.js';
+import {addMemory, removeMemory} from '../ai/profileMemory.js';
 
 export const tools = {
   read_file: {
@@ -122,6 +123,40 @@ export const tools = {
       }
 
       return executeComposioAction(found.action, found.args);
+    }
+  },
+
+  remember: {
+    description: 'Save a fact about Joe or this project to long term memory, so it persists across sessions and future conversations. Use this whenever Joe tells you something worth remembering about himself, his preferences, his projects, or how he wants you to behave. Save it as a short clear sentence.',
+    requiresApproval: false,
+    parameters: {
+      type: 'object',
+      properties: {
+        fact: {type: 'string', description: 'The fact to remember, written as a short clear sentence.'}
+      },
+      required: ['fact'],
+      additionalProperties: false
+    },
+    execute: ({fact}) => {
+      const saved = addMemory(fact);
+      return {status: saved ? 'saved' : 'already_known', fact};
+    }
+  },
+
+  forget: {
+    description: 'Remove a previously saved fact from long term memory. Use this when Joe asks you to forget something or corrects a fact you had saved.',
+    requiresApproval: false,
+    parameters: {
+      type: 'object',
+      properties: {
+        fact: {type: 'string', description: 'The exact fact text to remove, matching what was saved.'}
+      },
+      required: ['fact'],
+      additionalProperties: false
+    },
+    execute: ({fact}) => {
+      removeMemory(fact);
+      return {status: 'removed', fact};
     }
   }
 };
