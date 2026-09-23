@@ -7,12 +7,12 @@ import {addMemory, removeMemory} from '../ai/profileMemory.js';
 
 export const tools = {
   read_file: {
-    description: 'Read a text file inside the project.',
+    description: 'Read a text file. Works for files inside the project directory or anywhere in the phone shared storage folder (~/storage/shared and its subfolders like downloads, dcim, pictures).',
     requiresApproval: false,
     parameters: {
       type: 'object',
       properties: {
-        path: {type: 'string', description: 'Project relative path of the file to read.'}
+        path: {type: 'string', description: 'Path of the file to read. Can be relative to the project, or an absolute path like ~/storage/downloads/file.txt.'}
       },
       required: ['path'],
       additionalProperties: false
@@ -21,12 +21,12 @@ export const tools = {
   },
 
   write_file: {
-    description: 'Write or replace a text file inside the project.',
+    description: 'Write or replace a text file. Works for files inside the project directory or anywhere in the phone shared storage folder (~/storage/shared and its subfolders).',
     requiresApproval: true,
     parameters: {
       type: 'object',
       properties: {
-        path: {type: 'string', description: 'Project relative path of the file to write.'},
+        path: {type: 'string', description: 'Path of the file to write. Can be relative to the project, or an absolute path like ~/storage/downloads/file.txt.'},
         content: {type: 'string', description: 'Complete new contents of the file.'}
       },
       required: ['path', 'content'],
@@ -36,12 +36,12 @@ export const tools = {
   },
 
   list_files: {
-    description: 'List files and directories inside the project.',
+    description: 'List files and directories. Works for the project directory or anywhere in the phone shared storage folder (~/storage/shared and its subfolders like downloads, dcim, pictures, music, movies). Use this whenever the user asks about files anywhere on their phone, not only inside the project.',
     requiresApproval: false,
     parameters: {
       type: 'object',
       properties: {
-        path: {type: 'string', description: 'Project relative directory path.', default: '.'}
+        path: {type: 'string', description: 'Directory to list. Can be relative to the project (default .), or an absolute path like ~/storage/downloads.', default: '.'}
       },
       additionalProperties: false
     },
