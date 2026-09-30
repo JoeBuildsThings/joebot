@@ -1,5 +1,6 @@
 export default {
   all: [
+    {provider: 'puter', model: 'default'},
     {provider: 'groq', model: 'openai/gpt-oss-120b'},
     {
       provider: 'openrouter',

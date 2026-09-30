@@ -4,9 +4,10 @@ import * as profileMemory from './profileMemory.js';
 
 import * as gemini from './providers/gemini.js';
 import * as groq from './providers/groq.js';
+import * as puter from './providers/puter.js';
 import * as openrouter from './providers/openrouter.js';
 
-const providers = {gemini, groq, openrouter};
+const providers = {gemini, groq, openrouter, puter};
 
 function shouldFallback(error) {
   const temporaryStatuses = [408, 409, 425, 429, 500, 502, 503, 504];

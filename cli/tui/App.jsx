@@ -122,34 +122,7 @@ function App() {
         });
 
         setAgent(instance);
-        setBusy(true);
-
-        instance
-          .ask('Greet me briefly using what you remember about me')
-          .then(result => {
-            if (!mounted) {
-              return;
-            }
-
-            setProvider(result.provider);
-            setModel(result.model);
-
-            setMessages(previous => [
-              ...previous,
-              {
-                id: `greeting-${Date.now()}`,
-                input: null,
-                reply: result.reply,
-                greeting: true
-              }
-            ]);
-          })
-          .catch(() => {})
-          .finally(() => {
-            if (mounted) {
-              setBusy(false);
-            }
-          });
+        setBusy(false);
       })
       .catch(error => {
         console.error('Failed to load JOEBOT agent:', error);
