@@ -1,53 +1,75 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Box, Text, useApp, useInput, render} from 'ink';
-import {TextInput} from '@inkjs/ui';
+import {Box, Static, useApp, useInput, render} from 'ink';
 
 import {
   COMMANDS,
-  Header,
+  Welcome,
   Message,
+  Live,
   ApprovalCard,
   CommandMenu,
-  StatusBar
+  Prompt,
+  Rule,
+  Footer,
+  argsOf
 } from './components.jsx';
+
+const WELCOME = {id: 'welcome', welcome: true};
+const DECISIONS = ['once', 'session', 'deny'];
+
+function sessionKey(request) {
+  const args = argsOf(request);
+  if (request.tool === 'run_command') {
+    const words = String(args.command || '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .join(' ');
+    return words ? `run_command:${words}` : null;
+  }
+  return request.tool || null;
+}
+
+function sameCall(a, b) {
+  return a.tool === b.tool && JSON.stringify(a.arguments || {}) === JSON.stringify(b.arguments || {});
+}
 
 function App() {
   const {exit} = useApp();
 
-  const [input, setInput] = useState('');
-  const [inputKey, setInputKey] = useState(0);
-  const [selected, setSelected] = useState(0);
-  const [messages, setMessages] = useState([]);
-
-  const [busy, setBusy] = useState(false);
+  const [items, setItems] = useState([WELCOME]);
+  const [epoch, setEpoch] = useState(0);
+  const [live, setLive] = useState(null);
   const [agent, setAgent] = useState(null);
-
-  const [provider, setProvider] = useState(null);
-  const [model, setModel] = useState(null);
-
+  const [meta, setMeta] = useState({provider: null, model: null});
+  const [editor, setEditor] = useState({text: '', cursor: 0});
+  const [selected, setSelected] = useState(0);
+  const [busy, setBusy] = useState(false);
   const [approval, setApproval] = useState(null);
+  const [choice, setChoice] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
-  const [lastActivity, setLastActivity] = useState(null);
 
-  const approvalResolver = useRef(null);
-  const currentMessage = useRef(null);
+  const resolver = useRef(null);
+  const events = useRef([]);
+  const session = useRef(new Set());
+  const history = useRef([]);
+  const histIndex = useRef(-1);
+  const busyRef = useRef(false);
   const interrupted = useRef(false);
-
-  function resetInput() {
-    setInput('');
-    setSelected(0);
-    setInputKey(key => key + 1);
-  }
+  const agentRef = useRef(null);
 
   const matches = useMemo(
     () =>
-      input.startsWith('/')
-        ? COMMANDS.filter(([command]) =>
-            command.startsWith(input.toLowerCase())
-          )
+      editor.text.startsWith('/') && !editor.text.includes(' ')
+        ? COMMANDS.filter(([name]) => name.startsWith(editor.text.toLowerCase()))
         : [],
-    [input]
+    [editor.text]
   );
+
+  function say(input, reply) {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setItems(previous => [...previous, {id, input, reply}]);
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -62,67 +84,53 @@ function App() {
 
         const instance = new Agent({
           onTool(event) {
-            const messageId = currentMessage.current;
+            const list = [...events.current];
 
-            if (!messageId) {
-              return;
+            if (event.phase === 'completed' || event.phase === 'denied') {
+              let index = -1;
+              for (let i = list.length - 1; i >= 0; i--) {
+                if (list[i].phase === 'requested' && sameCall(list[i], event)) {
+                  index = i;
+                  break;
+                }
+              }
+              if (index < 0) {
+                for (let i = list.length - 1; i >= 0; i--) {
+                  if (list[i].phase === 'requested' && list[i].tool === event.tool) {
+                    index = i;
+                    break;
+                  }
+                }
+              }
+              if (index >= 0) {
+                list[index] = event;
+              } else {
+                list.push(event);
+              }
+            } else {
+              list.push(event);
             }
 
-            setMessages(previous =>
-              previous.map(message => {
-                if (message.id !== messageId) {
-                  return message;
-                }
-
-                const events = [...(message.events || [])];
-
-                const existingIndex = events.findIndex(
-                  existing =>
-                    existing.tool === event.tool &&
-                    existing.phase === 'requested' &&
-                    event.phase !== 'requested'
-                );
-
-                if (event.phase === 'completed' || event.phase === 'denied') {
-                  if (existingIndex >= 0) {
-                    events[existingIndex] = event;
-                  } else {
-                    events.push(event);
-                  }
-                } else {
-                  events.push(event);
-                }
-
-                
-                // Track last activity for header
-                if (event.phase === 'completed' || event.phase === 'requested') {
-                  const label =
-                    event.tool === 'run_command'
-                      ? `run ${(event.arguments?.command || '').slice(0, 36)}`
-                      : event.tool === 'write_file'
-                        ? `write ${event.arguments?.path || ''}`
-                        : event.tool === 'read_file'
-                          ? `read ${event.arguments?.path || ''}`
-                          : event.tool;
-                  setLastActivity(label);
-                }
-
-                return {...message, events};
-              })
-            );
+            events.current = list;
+            setLive(previous => (previous ? {...previous, events: list} : previous));
           },
 
           async approveTool(request) {
+            const key = sessionKey(request);
+            if (key && session.current.has(key)) {
+              return true;
+            }
             return new Promise(resolve => {
-              approvalResolver.current = resolve;
+              resolver.current = {resolve, key};
+              setChoice(0);
               setShowDetail(false);
               setApproval(request);
             });
           }
         });
 
+        agentRef.current = instance;
         setAgent(instance);
-        setBusy(false);
       })
       .catch(error => {
         console.error('Failed to load JOEBOT agent:', error);
@@ -134,72 +142,141 @@ function App() {
     };
   }, []);
 
-  useInput((value, key) => {
-    if (key.ctrl && value === 'c') {
-      exit();
+  function answer(decision) {
+    const pending = resolver.current;
+    resolver.current = null;
+    setApproval(null);
+    setShowDetail(false);
+    if (!pending) {
       return;
     }
-
-    if (approval) {
-      const isRisky = approval.tool === 'run_command';
-
-      if (value.toLowerCase() === 'y') {
-        const resolve = approvalResolver.current;
-        approvalResolver.current = null;
-        setApproval(null);
-        setShowDetail(false);
-        if (resolve) resolve(true);
-        return;
-      }
-
-      if (value.toLowerCase() === 'n' || key.escape) {
-        const resolve = approvalResolver.current;
-        approvalResolver.current = null;
-        setApproval(null);
-        setShowDetail(false);
-        if (resolve) resolve(false);
-        return;
-      }
-
-      if (isRisky && value.toLowerCase() === 'd') {
-        setShowDetail(current => !current);
-        return;
-      }
-
-      return;
+    if (decision === 'session' && pending.key) {
+      session.current.add(pending.key);
     }
+    pending.resolve(decision !== 'deny');
+  }
 
-    if (key.escape && busy) {
-      interrupted.current = true;
-      return;
-    }
-
-    if (key.escape && input.startsWith('/')) {
-      resetInput();
-      return;
-    }
-
-    if (input.startsWith('/') && matches.length > 0) {
+  useInput(
+    (ch, key) => {
+      const c = ch.toLowerCase();
       if (key.upArrow) {
-        setSelected(current =>
-          current <= 0 ? matches.length - 1 : current - 1
-        );
+        setChoice(value => (value + 2) % 3);
+      } else if (key.downArrow || key.tab) {
+        setChoice(value => (value + 1) % 3);
+      } else if (key.return) {
+        answer(DECISIONS[choice]);
+      } else if (c === 'y' || c === '1') {
+        answer('once');
+      } else if (c === 'a' || c === '2') {
+        answer('session');
+      } else if (c === 'n' || c === '3' || key.escape) {
+        answer('deny');
+      } else if (c === 'd') {
+        setShowDetail(value => !value);
+      }
+    },
+    {isActive: Boolean(approval)}
+  );
+
+  function interrupt() {
+    interrupted.current = true;
+    const target = agentRef.current;
+    if (target && typeof target.abort === 'function') {
+      target.abort();
+    }
+  }
+
+  useInput(
+    (ch, key) => {
+      if (key.ctrl) {
+        if (ch === 'c') {
+          exit();
+        } else if (ch === 'u') {
+          setEditor({text: '', cursor: 0});
+        } else if (ch === 'a') {
+          setEditor(e => ({...e, cursor: 0}));
+        } else if (ch === 'e') {
+          setEditor(e => ({...e, cursor: e.text.length}));
+        }
         return;
       }
 
-      if (key.downArrow) {
-        setSelected(current =>
-          current >= matches.length - 1 ? 0 : current + 1
-        );
+      if (key.escape) {
+        if (busyRef.current) {
+          interrupt();
+        } else {
+          setEditor({text: '', cursor: 0});
+          setSelected(0);
+        }
+        return;
+      }
+
+      if (key.return) {
+        submit();
+        return;
+      }
+
+      if (key.upArrow || key.downArrow) {
+        if (matches.length) {
+          setSelected(value =>
+            key.upArrow ? (value + matches.length - 1) % matches.length : (value + 1) % matches.length
+          );
+        } else if (history.current.length) {
+          const list = history.current;
+          const next = key.upArrow
+            ? Math.min(list.length - 1, histIndex.current + 1)
+            : Math.max(-1, histIndex.current - 1);
+          histIndex.current = next;
+          const text = next < 0 ? '' : list[list.length - 1 - next];
+          setEditor({text, cursor: text.length});
+        }
         return;
       }
 
       if (key.tab) {
-        setInput(matches[selected]?.[0] || input);
+        if (matches.length) {
+          const text = matches[Math.min(selected, matches.length - 1)][0];
+          setEditor({text, cursor: text.length});
+        }
         return;
       }
-    }
-  });
+
+      if (key.leftArrow) {
+        setEditor(e => ({...e, cursor: Math.max(0, e.cursor - 1)}));
+        return;
+      }
+
+      if (key.rightArrow) {
+        setEditor(e => ({...e, cursor: Math.min(e.text.length, e.cursor + 1)}));
+        return;
+      }
+
+      if (key.backspace || key.delete) {
+        setEditor(e =>
+          e.cursor === 0
+            ? e
+            : {
+                text: e.text.slice(0, e.cursor - 1) + e.text.slice(e.cursor),
+                cursor: e.cursor - 1
+              }
+        );
+        setSelected(0);
+        return;
+      }
+
+      if (key.meta || !ch) {
+        return;
+      }
+
+      const clean = ch.replace(/[\r\n]+/g, ' ');
+      setEditor(e => ({
+        text: e.text.slice(0, e.cursor) + clean + e.text.slice(e.cursor),
+        cursor: e.cursor + clean.length
+      }));
+      setSelected(0);
+    },
+    {isActive: !approval}
+  );
 
   async function runCommand(command) {
     switch (command) {
@@ -208,312 +285,173 @@ function App() {
         return;
 
       case '/clear':
-        setMessages([]);
+        process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
         if (agent?.clear) agent.clear();
-        resetInput();
+        setItems([WELCOME]);
+        setEpoch(value => value + 1);
         return;
 
       case '/help':
-        setMessages(previous => [
-          ...previous,
-          {
-            id: Date.now(),
-            input: command,
-            reply: COMMANDS.map(
-              ([name, description]) => `${name.padEnd(16)} ${description}`
-            ).join('\n')
-          }
-        ]);
-        break;
+        say(command, COMMANDS.map(([name, text]) => `${name.padEnd(14)} ${text}`).join('\n'));
+        return;
 
       case '/status':
-        setMessages(previous => [
-          ...previous,
-          {
-            id: Date.now(),
-            input: command,
-            reply:
-              'JOEBOT online\n\n' +
-              'Runtime: Termux\n' +
-              'TUI: Ink\n' +
-              `Agent: ${agent ? 'connected' : 'loading'}\n` +
-              `Provider: ${provider || 'auto'}\n` +
-              `Model: ${model || 'auto'}`
-          }
-        ]);
-        break;
+        say(
+          command,
+          `Agent: ${agent ? 'connected' : 'loading'}\n` +
+            `Provider: ${meta.provider || 'auto'}\n` +
+            `Model: ${meta.model || 'auto'}\n` +
+            `Context: ${agent?.getContextSize?.() || 0} messages`
+        );
+        return;
 
       case '/tools':
+      case '/permissions':
         try {
           const module = await import('../../server/tools/index.js');
-          const available = module.getTools ? module.getTools() : [];
-
-          setMessages(previous => [
-            ...previous,
-            {
-              id: Date.now(),
-              input: command,
-              reply: available.length
-                ? available
-                    .map(
-                      tool =>
-                        `${tool.name.padEnd(18)} ${
-                          tool.requiresApproval ? 'approval required' : 'automatic'
-                        }`
-                    )
-                    .join('\n')
-                : 'No tools registered.'
-            }
-          ]);
-        } catch {
-          setMessages(previous => [
-            ...previous,
-            {id: Date.now(), input: command, reply: 'Unable to load tool registry.'}
-          ]);
+          const registry = module.tools || {};
+          const rows = Object.entries(registry).map(
+            ([name, tool]) =>
+              `${name.padEnd(16)} ${tool.requiresApproval ? 'approval required' : 'automatic'}`
+          );
+          let reply = rows.length ? rows.join('\n') : 'No tools registered.';
+          if (command === '/permissions') {
+            const allowed = [...session.current];
+            reply += '\n\nSession approvals:\n' + (allowed.length ? allowed.join('\n') : 'none');
+          }
+          say(command, reply);
+        } catch (error) {
+          say(command, `Unable to load tool registry: ${error.message}`);
         }
-        break;
+        return;
 
-      case '/permissions':
-        setMessages(previous => [
-          ...previous,
-          {
-            id: Date.now(),
-            input: command,
-            reply:
-              'JOEBOT permissions\n\n' +
-              'read_file       automatic\n' +
-              'list_files      automatic\n' +
-              'search_code     automatic\n' +
-              'web_search      automatic\n' +
-              'write_file      approval required\n' +
-              'run_command     approval required, detail view available\n\n' +
-              'Network         provider controlled'
-          }
-        ]);
-        break;
-
-      case '/plan':
-        setMessages(previous => [
-          ...previous,
-          {
-            id: Date.now(),
-            input: command,
-            reply:
-              'Planning mode\n\n' +
-              '1. Understand request\n' +
-              '2. Inspect project\n' +
-              '3. Build implementation plan\n' +
-              '4. Request approval\n' +
-              '5. Implement\n' +
-              '6. Verify changes'
-          }
-        ]);
-        break;
-
-      case '/doctor':
-        setMessages(previous => [
-          ...previous,
-          {
-            id: Date.now(),
-            input: command,
-            reply:
-              'JOEBOT diagnostics\n\n' +
-              `Agent: ${agent ? 'OK' : 'NOT READY'}\n` +
-              'TUI: OK\n' +
-              'Tool registry: OK\n' +
-              'Filesystem sandbox: OK\n' +
-              `AI provider: ${provider || 'AUTO'}`
-          }
-        ]);
-        break;
+      case '/revoke':
+        session.current.clear();
+        say(command, 'Session approvals cleared.');
+        return;
 
       case '/memory':
         try {
           const module = await import('../../server/ai/profileMemory.js');
           const memories = module.getMemories ? module.getMemories() : [];
-
-          setMessages(previous => [
-            ...previous,
-            {
-              id: Date.now(),
-              input: command,
-              reply: memories.length
-                ? memories.map(item => `- ${item}`).join('\n')
-                : 'No saved memories yet.'
-            }
-          ]);
-        } catch {
-          setMessages(previous => [
-            ...previous,
-            {id: Date.now(), input: command, reply: 'Unable to read the memory module.'}
-          ]);
+          say(command, memories.length ? memories.map(item => `• ${item}`).join('\n') : 'No saved memories yet.');
+        } catch (error) {
+          say(command, `Unable to read the memory module: ${error.message}`);
         }
-        break;
-
-      case '/chats':
-        setMessages(previous => [
-          ...previous,
-          {
-            id: Date.now(),
-            input: command,
-            reply: 'Conversation manager detected.\nPersistent chat browser will be connected next.'
-          }
-        ]);
-        break;
+        return;
 
       case '/compact':
-        setMessages(previous => [
-          ...previous,
-          {
-            id: Date.now(),
-            input: command,
-            reply: `Context compaction is not enabled yet.\nCurrent context: ${
-              agent?.getContextSize?.() || 0
-            } messages.`
-          }
-        ]);
-        break;
+        say(
+          command,
+          `Context compaction is not enabled yet.\nCurrent context: ${agent?.getContextSize?.() || 0} messages.`
+        );
+        return;
+
+      case '/doctor':
+        say(
+          command,
+          `Agent: ${agent ? 'loaded' : 'not loaded'}\n` +
+            `Provider: ${meta.provider || 'none yet'}\n` +
+            `Model: ${meta.model || 'none yet'}\n` +
+            `Session approvals: ${session.current.size}`
+        );
+        return;
 
       default:
-        setMessages(previous => [
-          ...previous,
-          {id: Date.now(), input: command, reply: `Command ${command} is not implemented yet.`}
-        ]);
+        say(command, `Unknown command: ${command}. Type / for commands.`);
     }
-
-    resetInput();
   }
 
-  async function submit(value) {
-    const text = value.trim();
+  async function submit() {
+    let text = editor.text.trim();
 
-    if (!text || busy || approval) {
+    if (!text || busyRef.current) {
       return;
     }
 
-    resetInput();
+    if (
+      text.startsWith('/') &&
+      matches.length &&
+      !COMMANDS.some(([name]) => name === text.toLowerCase())
+    ) {
+      text = matches[Math.min(selected, matches.length - 1)][0];
+    }
+
+    history.current.push(text);
+    histIndex.current = -1;
+    setEditor({text: '', cursor: 0});
+    setSelected(0);
 
     if (text.startsWith('/')) {
-      const exact = COMMANDS.find(([command]) => command === text);
-
-      if (exact) {
-        await runCommand(exact[0]);
-        return;
-      }
-
-      if (text === '/' && matches.length > 0) {
-        setInput(matches[selected]?.[0] || '/');
-        return;
-      }
-
-      setMessages(previous => [
-        ...previous,
-        {id: Date.now(), input: text, reply: `Unknown command: ${text}. Type / for commands.`}
-      ]);
-
+      await runCommand(text.toLowerCase());
       return;
     }
 
     if (!agent) {
-      setMessages(previous => [
-        ...previous,
-        {id: Date.now(), input: text, reply: 'Agent is still starting. Try again in a moment.'}
-      ]);
-
+      say(text, 'Agent is still starting. Try again in a moment.');
       return;
     }
 
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-    currentMessage.current = id;
+    events.current = [];
     interrupted.current = false;
-
+    busyRef.current = true;
     setBusy(true);
+    setLive({id, input: text, events: []});
 
-    setMessages(previous => [
-      ...previous,
-      {id, input: text, busy: true, events: [], reply: ''}
-    ]);
-
+    let reply = '';
     try {
       const result = await agent.ask(text);
-
-      setProvider(result.provider);
-      setModel(result.model);
-
-      setMessages(previous =>
-        previous.map(message =>
-          message.id === id
-            ? {
-                ...message,
-                busy: false,
-                reply: interrupted.current
-                  ? 'Request completed after interrupt.'
-                  : result.reply || 'No response returned.'
-              }
-            : message
-        )
-      );
+      setMeta({provider: result.provider, model: result.model});
+      reply = result.reply || 'No response returned.';
+      if (interrupted.current) {
+        reply = `Interrupt requested, but the step had already finished.\n${reply}`;
+      }
     } catch (error) {
-      setMessages(previous =>
-        previous.map(message =>
-          message.id === id
-            ? {...message, busy: false, reply: `Agent error: ${error.message}`}
-            : message
-        )
-      );
+      reply = `Agent error: ${error.message}`;
     } finally {
+      setItems(previous => [...previous, {id, input: text, events: events.current, reply}]);
+      busyRef.current = false;
       setBusy(false);
-      currentMessage.current = null;
+      setLive(null);
     }
-
-    setSelected(0);
   }
 
   return (
-    <Box flexDirection="column" padding={1}>
-      <Header busy={busy} provider={provider} model={model} lastActivity={lastActivity} />
-
-      <Box flexDirection="column">
-        {messages.map(message => (
-          <Message key={message.id} item={message}/>
-        ))}
-      </Box>
-
-      {approval && <ApprovalCard approval={approval} showDetail={showDetail}/>}
-
-      <Box flexDirection="column">
-        <Box>
-          <Text color="#FF8A3D" bold>❯ </Text>
-
-          <Box flexDirection="column" marginTop={1}>
-        <Text dimColor>{'- '.repeat(32).trim()}</Text>
-        <Box>
-          <Text color="#FF8A3D">❯ </Text>
-          <TextInput
-            key={inputKey}
-            value={input}
-            onChange={setInput}
-            onSubmit={submit}
-            placeholder="Message JOEBOT..."
-          />
-        </Box>
-        <Text dimColor>{'- '.repeat(32).trim()}</Text>
-      </Box>
-        </Box>
-
-        {!busy && !approval && (
-          <CommandMenu query={input} selected={selected}/>
+    <Box flexDirection="column">
+      <Static key={epoch} items={items}>
+        {item => (
+          <Box key={item.id} flexDirection="column">
+            {item.welcome ? <Welcome /> : <Message item={item} />}
+          </Box>
         )}
-      </Box>
+      </Static>
 
-      <StatusBar
-        busy={busy}
+      {live ? <Live item={live} paused={Boolean(approval)} /> : null}
+
+      {approval ? (
+        <ApprovalCard approval={approval} choice={choice} showDetail={showDetail} />
+      ) : null}
+
+      <Rule />
+      <Prompt
+        text={editor.text}
+        cursor={editor.cursor}
+        active={!approval}
+        placeholder={busy ? 'Working, you can keep typing' : 'Message JOEBOT'}
+      />
+      <Rule />
+
+      {!approval ? <CommandMenu matches={matches} selected={selected} /> : null}
+
+      <Footer
+        provider={meta.provider}
+        model={meta.model}
         context={agent?.getContextSize?.() || 0}
-        approval={approval}
+        approval={Boolean(approval)}
       />
     </Box>
   );
 }
 
-render(<App/>);
+render(<App />);
