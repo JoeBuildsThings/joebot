@@ -153,12 +153,25 @@ function summarize(event) {
         .filter(Boolean)
         .join(' · ');
     }
+    case 'remember':
+      return 'Saved';
+    case 'forget':
+      return 'Forgotten';
     default:
       return text ? clip(text, 70) : clip(JSON.stringify(result), 70);
   }
 }
 
 function ToolLine({event}) {
+  if (event.phase === 'note') {
+    return (
+      <Box>
+        <Text color={ACCENT}>● </Text>
+        <Text>{event.text}</Text>
+      </Box>
+    );
+  }
+
   const label = toolLabel(event.tool, event.arguments);
   const result = event.result;
   const errorText =
@@ -183,7 +196,7 @@ function ToolLine({event}) {
         <Text color={failed ? 'red' : ACCENT}>● </Text>
         <Text bold>{label}</Text>
       </Text>
-      <Text dimColor>{'  ⎿  ' + detail}</Text>
+      <Text dimColor>{'  ⎿  ' + clip(detail, width() - 8)}</Text>
     </Box>
   );
 }
@@ -244,7 +257,9 @@ function Working({label}) {
   );
 }
 
-export function Live({item, paused}) {
+export function Live({item, paused, text}) {
+  const rows = text ? text.split('\n') : [];
+  const tail = rows.slice(Math.max(0, rows.length - 12)).join('\n');
   const shown = (item.events || []).slice(-4);
   return (
     <Box flexDirection="column" marginBottom={1}>
@@ -252,6 +267,12 @@ export function Live({item, paused}) {
       {shown.map((event, i) => (
         <ToolLine key={i} event={event} />
       ))}
+      {tail ? (
+        <Box>
+          <Text color={ACCENT}>● </Text>
+          <Reply text={tail} />
+        </Box>
+      ) : null}
       {paused ? null : <Working label="Working" />}
     </Box>
   );

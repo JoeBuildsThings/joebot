@@ -1,4 +1,5 @@
 import {setLastUserText} from '../server/tools/exactquery.js';
+import fs from 'fs';
 import {generate} from '../server/ai/router.js';
 import {tools, executeTool, getToolDefinitions} from '../server/tools/index.js';
 
@@ -16,7 +17,7 @@ Rules:
 - Do not add disclaimers, warnings, or ask for permission before writing code or running routine development commands. Act directly.
 - Do not hedge with phrases like "I could be wrong" or "you may want to verify" unless there is a genuine, specific reason for doubt in this exact case.
 - Never invent tool results. Base every claim on observed tool output or file state from this session.
-- Use project-relative paths only.
+- Use project relative paths for project files. Phone storage lives at ~/storage/downloads, ~/storage/dcim, ~/storage/pictures, ~/storage/music, ~/storage/movies, and ~/storage/shared for everything.
 - Read before writing.
 - write_file and run_command both auto-trigger the approval flow. Be plain about what they will do.
 - Do not call the same tool more than twice while searching. After two failures, stop and report plainly.
@@ -60,11 +61,22 @@ function truncateToolResult(result) {
   return serialized.slice(0, MAX_TOOL_RESULT_CHARS) + '...[truncated]';
 }
 
+function logTiming(line) {
+  if (!process.env.JOEBOT_TIMING) {
+    return;
+  }
+  try {
+    fs.appendFileSync('joebot-timing.log', new Date().toISOString() + ' ' + line + '\n');
+  } catch {}
+}
+
 class Agent {
   constructor(options = {}) {
     this.messages = [];
     this.onTool = options.onTool || null;
     this.approveTool = options.approveTool || null;
+    this.onText = options.onText || null;
+    this.onReset = options.onReset || null;
     this.aborted = false;
     this.toolDefinitions = getToolDefinitions();
   }
@@ -117,13 +129,17 @@ class Agent {
         return this.finishStopped(toolCalls);
       }
 
+      const stepStart = Date.now();
       const result = await generate({
         messages: this.messages,
         debug: false,
         systemAddition: AGENT_INSTRUCTIONS,
         tools: this.toolDefinitions,
-        toolChoice: 'auto'
+        toolChoice: 'auto',
+        onText: this.onText,
+        onReset: this.onReset
       });
+      logTiming(`step ${step} model ${Date.now() - stepStart}ms provider ${result.provider} model ${result.model} promptChars ${JSON.stringify(this.messages).length + AGENT_INSTRUCTIONS.length + JSON.stringify(this.toolDefinitions).length} toolCalls ${(result.toolCalls || []).length}`);
 
       if (!result.toolCalls || result.toolCalls.length === 0) {
         this.messages.push({role: 'assistant', content: result.reply});
@@ -224,7 +240,9 @@ class Agent {
         let toolResult;
 
         try {
+          const toolStart = Date.now();
           toolResult = await executeTool(name, args);
+          logTiming(`tool ${name} ${Date.now() - toolStart}ms`);
         } catch (error) {
           toolResult = {error: error.message};
         }

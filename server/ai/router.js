@@ -9,25 +9,6 @@ import * as openrouter from './providers/openrouter.js';
 
 const providers = {gemini, groq, openrouter, puter};
 
-function shouldFallback(error) {
-  const temporaryStatuses = [408, 409, 425, 429, 500, 502, 503, 504];
-
-  if (temporaryStatuses.includes(error?.status)) {
-    return true;
-  }
-
-  const message = String(error?.message || '').toLowerCase();
-
-  return (
-    message.includes('quota') ||
-    message.includes('rate limit') ||
-    message.includes('temporarily') ||
-    message.includes('timeout') ||
-    message.includes('fetch failed') ||
-    message.includes('empty response')
-  );
-}
-
 function buildMemoryBlock() {
   const memories = profileMemory.getMemories();
 
@@ -35,7 +16,7 @@ function buildMemoryBlock() {
     return '';
   }
 
-  const list = memories.map(item => `- ${item}`).join('\n');
+  const list = memories.map(item => `* ${item}`).join('\n');
 
   return `PERSONAL MEMORY\n${list}`;
 }
@@ -65,13 +46,15 @@ export async function generate({
   debug = false,
   systemAddition = '',
   tools = [],
-  toolChoice = 'auto'
+  toolChoice = 'auto',
+  onText = null,
+  onReset = null
 }) {
   const systemPrompt = buildSystemPrompt(systemAddition);
 
   const finalMessages = [{role: 'system', content: systemPrompt}, ...messages];
 
-  let lastError = null;
+  const failures = [];
 
   for (const candidate of models.all) {
     const provider = providers[candidate.provider];
@@ -79,6 +62,15 @@ export async function generate({
     if (!provider) {
       continue;
     }
+
+    let streamed = false;
+
+    const wrapped = onText
+      ? chunk => {
+          streamed = true;
+          onText(chunk);
+        }
+      : undefined;
 
     try {
       if (debug) {
@@ -89,7 +81,8 @@ export async function generate({
         model: candidate.model,
         messages: finalMessages,
         tools,
-        toolChoice
+        toolChoice,
+        onText: wrapped
       });
 
       assertValidProviderResult(result, candidate.provider);
@@ -102,19 +95,19 @@ export async function generate({
         model: candidate.model
       };
     } catch (error) {
-      lastError = error;
+      failures.push(`${candidate.provider}: ${String(error.message)}`);
 
       if (debug) {
         console.log(`[JOEBOT DEBUG] ${candidate.provider}/${candidate.model} failed: ${error.message}`);
       }
 
-      if (!shouldFallback(error)) {
-        throw error;
+      if (streamed && onReset) {
+        onReset();
       }
     }
   }
 
-  const error = new Error(lastError?.message || 'All JOEBOT providers failed');
+  const error = new Error('All JOEBOT providers failed. ' + failures.join(' | '));
   error.code = 'ALL_PROVIDERS_FAILED';
   throw error;
 }

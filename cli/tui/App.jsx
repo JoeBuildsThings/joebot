@@ -45,11 +45,13 @@ function App() {
   const [editor, setEditor] = useState({text: '', cursor: 0});
   const [selected, setSelected] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [stream, setStream] = useState('');
   const [approval, setApproval] = useState(null);
   const [choice, setChoice] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
 
   const resolver = useRef(null);
+  const bufRef = useRef('');
   const events = useRef([]);
   const session = useRef(new Set());
   const history = useRef([]);
@@ -86,6 +88,12 @@ function App() {
           onTool(event) {
             const list = [...events.current];
 
+            if (event.phase === 'requested' && bufRef.current.trim()) {
+              list.push({phase: 'note', text: bufRef.current.trim()});
+              bufRef.current = '';
+              setStream('');
+            }
+
             if (event.phase === 'completed' || event.phase === 'denied') {
               let index = -1;
               for (let i = list.length - 1; i >= 0; i--) {
@@ -115,6 +123,14 @@ function App() {
             setLive(previous => (previous ? {...previous, events: list} : previous));
           },
 
+          onText(chunk) {
+            bufRef.current += chunk;
+          },
+
+          onReset() {
+            bufRef.current = '';
+          },
+
           async approveTool(request) {
             const key = sessionKey(request);
             if (key && session.current.has(key)) {
@@ -141,6 +157,16 @@ function App() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!busy) {
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      setStream(previous => (previous === bufRef.current ? previous : bufRef.current));
+    }, 80);
+    return () => clearInterval(timer);
+  }, [busy]);
 
   function answer(decision) {
     const pending = resolver.current;
@@ -412,6 +438,8 @@ function App() {
     } finally {
       setItems(previous => [...previous, {id, input: text, events: events.current, reply}]);
       busyRef.current = false;
+      bufRef.current = '';
+      setStream('');
       setBusy(false);
       setLive(null);
     }
@@ -427,7 +455,7 @@ function App() {
         )}
       </Static>
 
-      {live ? <Live item={live} paused={Boolean(approval)} /> : null}
+      {live ? <Live item={live} paused={Boolean(approval)} text={stream} /> : null}
 
       {approval ? (
         <ApprovalCard approval={approval} choice={choice} showDetail={showDetail} />

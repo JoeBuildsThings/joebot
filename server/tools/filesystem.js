@@ -36,6 +36,24 @@ function isWithin(root, target) {
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
+async function realpathLoose(target) {
+  let current = target;
+  const rest = [];
+  for (;;) {
+    try {
+      const real = await fs.realpath(current);
+      return path.join(real, ...rest);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) {
+        return target;
+      }
+      rest.unshift(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
 async function resolveSafePath(inputPath) {
   const expanded = inputPath.startsWith('~')
     ? path.join(HOME, inputPath.slice(1))
@@ -43,13 +61,7 @@ async function resolveSafePath(inputPath) {
 
   const base = path.isAbsolute(expanded) ? expanded : path.resolve(PROJECT_ROOT, expanded);
 
-  let resolved;
-
-  try {
-    resolved = await fs.realpath(base);
-  } catch {
-    resolved = path.resolve(base);
-  }
+  const resolved = await realpathLoose(path.resolve(base));
 
   const allowedRoots = await getAllowedRoots();
   const withinAllowedRoot = allowedRoots.some(root => isWithin(root, resolved));
