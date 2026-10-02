@@ -7,7 +7,7 @@ const MAX_TOOL_RESULT_CHARS = 2000;
 const MAX_HISTORY_MESSAGES = 20;
 
 const AGENT_INSTRUCTIONS = `
-You are an interactive agent helping Joe with software engineering and system tasks inside the JOEBOT project on Termux.
+You are working inside Joe's JOEBOT project on Termux. The rules below apply when he is doing build work, such as code, files, or commands. For normal conversation, answer directly and do not use tools.
 
 Before you start a multi-step task, say in one short line what you are about to do. Give brief updates only when useful. When you finish, close with a short recap that stands alone: what you found, what you did, and what is left if anything.
 
@@ -65,6 +65,7 @@ class Agent {
     this.messages = [];
     this.onTool = options.onTool || null;
     this.approveTool = options.approveTool || null;
+    this.aborted = false;
     this.toolDefinitions = getToolDefinitions();
   }
 
@@ -77,16 +78,26 @@ class Agent {
   }
 
   trimHistory() {
-    if (this.messages.length <= MAX_HISTORY_MESSAGES) {
-      return;
-    }
+    while (this.messages.length > MAX_HISTORY_MESSAGES) {
+      const next = this.messages.findIndex(
+        (message, index) => index > 0 && message.role === 'user'
+      );
 
-    const overflow = this.messages.length - MAX_HISTORY_MESSAGES;
-    this.messages.splice(0, overflow);
+      if (next < 0) {
+        break;
+      }
 
-    while (this.messages.length && this.messages[0].role === 'tool') {
-      this.messages.shift();
+      this.messages.splice(0, next);
     }
+  }
+
+  abort() {
+    this.aborted = true;
+  }
+
+  finishStopped(toolCalls) {
+    this.messages.push({role: 'assistant', content: 'Stopped.'});
+    return {reply: 'Stopped.', stopped: true, toolCalls};
   }
 
   async ask(input) {
@@ -94,6 +105,7 @@ class Agent {
       throw new Error('Input is required');
     }
 
+    this.aborted = false;
     this.messages.push({role: 'user', content: input.trim()});
     setLastUserText(input.trim());
     this.trimHistory();
@@ -101,6 +113,10 @@ class Agent {
     const toolCalls = [];
 
     for (let step = 0; step < MAX_STEPS; step++) {
+      if (this.aborted) {
+        return this.finishStopped(toolCalls);
+      }
+
       const result = await generate({
         messages: this.messages,
         debug: false,
@@ -123,6 +139,16 @@ class Agent {
       });
 
       for (const call of result.toolCalls) {
+        if (this.aborted) {
+          this.messages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            name: call?.function?.name || 'unknown',
+            content: JSON.stringify({error: 'Stopped by the user before this ran.'})
+          });
+          continue;
+        }
+
         const name = call?.function?.name;
         const rawArguments = call?.function?.arguments || '{}';
 
