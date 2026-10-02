@@ -402,11 +402,11 @@ function App() {
     let reply = '';
     try {
       const result = await agent.ask(text);
-      setMeta({provider: result.provider, model: result.model});
+      setMeta(previous => ({
+        provider: result.provider || previous.provider,
+        model: result.model || previous.model
+      }));
       reply = result.reply || 'No response returned.';
-      if (interrupted.current) {
-        reply = `Interrupt requested, but the step had already finished.\n${reply}`;
-      }
     } catch (error) {
       reply = `Agent error: ${error.message}`;
     } finally {

@@ -1,296 +1,364 @@
-import React, {useState, useEffect} from 'react';
+import React, {useEffect, useState} from 'react';
 import {Box, Text} from 'ink';
-import {renderMarkdown} from './markdown.js';
 
-export const VERSION = '1.0.0';
+export const ACCENT = '#4D9DFF';
+export const CYAN = '#2EE6E6';
+export const NAME = 'JOEBOT';
+const BAND = '#262626';
+const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-const ACCENT = '#d77757';          // terracotta (Claude Code primary)
-const HOT_PINK = '#fd5db1';        // tool / bash borders
-const LAVENDER = '#b1b9f9';        // permission dialogs
-const SUCCESS = '#4eba65';
-const MUTED = '#888888';
-const BOX_WIDTH = 64;
-
-const TOOL_ICONS = {
-  read_file: '◈',
-  write_file: '✎',
-  list_files: '▤',
-  search_code: '⌕',
-  run_command: '❯_',
-  web_search: '◎'
-};
+const LOGO = [
+  ' ━┓ ┏━┓ ┏━━ ┏┓  ┏━┓ ━┳━',
+  '  ┃ ┃ ┃ ┣━  ┣┻┓ ┃ ┃  ┃ ',
+  '┗━┛ ┗━┛ ┗━━ ┗━┛ ┗━┛  ┃ '
+];
 
 export const COMMANDS = [
-  ['/help', 'Show available commands'],
-  ['/status', 'Show JOEBOT status'],
-  ['/memory', 'Show saved memory'],
-  ['/chats', 'Show conversations'],
-  ['/clear', 'Clear agent context'],
-  ['/compact', 'Compact conversation context'],
-  ['/doctor', 'Run diagnostics'],
-  ['/plan', 'Planning mode'],
-  ['/tools', 'Show available tools'],
-  ['/permissions', 'Show permission settings'],
-  ['/exit', 'Exit JOEBOT']
+  ['/help', 'Show commands'],
+  ['/status', 'Agent, provider and model'],
+  ['/tools', 'Tools and approval rules'],
+  ['/permissions', 'Approvals for this session'],
+  ['/revoke', 'Clear session approvals'],
+  ['/memory', 'Saved memories'],
+  ['/compact', 'Context size'],
+  ['/doctor', 'Diagnostics'],
+  ['/clear', 'Clear the screen and chat'],
+  ['/exit', 'Quit']
 ];
 
-export function Header({busy, provider, model, lastActivity}) {
+export const APPROVAL_OPTIONS = [
+  'Yes, once',
+  'Yes, and do not ask again this session',
+  'No'
+];
+
+function width() {
+  return process.stdout.columns || 40;
+}
+
+function clip(value, max) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return text.length > max ? text.slice(0, max) + '…' : text;
+}
+
+export function argsOf(request) {
+  return request?.arguments || request?.args || request?.input || {};
+}
+
+export function toolLabel(tool, args) {
+  const a = args || {};
+  switch (tool) {
+    case 'read_file':
+      return `Read(${clip(a.path, 50)})`;
+    case 'list_files':
+      return `List(${clip(a.path || '.', 50)})`;
+    case 'search_code':
+      return `Search(${clip(a.query, 40)})`;
+    case 'web_search':
+      return `Web(${clip(a.query, 40)})`;
+    case 'write_file':
+      return `Write(${clip(a.path, 50)})`;
+    case 'run_command':
+      return `Run(${clip(a.command, 50)})`;
+    case 'remember':
+      return 'Remember';
+    case 'forget':
+      return 'Forget';
+    default:
+      return clip(tool, 40);
+  }
+}
+
+export function Welcome() {
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Box>
-        <Text>🙂 </Text>
-        <Text bold color={ACCENT}>JOEBOT</Text>
-        <Text dimColor> v{VERSION}</Text>
-        <Text dimColor> · \~/joebot</Text>
-        <Text dimColor> · </Text>
-        <Text color={busy ? ACCENT : 'green'}>
-          {busy ? 'working' : 'ready'}
-        </Text>
-        {provider && (
-          <>
-            <Text dimColor> · </Text>
-            <Text dimColor>{provider}/{model}</Text>
-          </>
-        )}
+      <Box
+        borderStyle="round"
+        borderColor={ACCENT}
+        paddingX={2}
+        flexDirection="column"
+      >
+        {LOGO.map((line, i) => (
+          <Text key={i} color={CYAN} bold>
+            {line}
+          </Text>
+        ))}
+        <Text> </Text>
+        <Text bold>Welcome to {NAME}</Text>
+        <Text dimColor>Your personal AI for Termux</Text>
+        <Text dimColor>{process.cwd()}</Text>
       </Box>
-      <Box>
-        <Text dimColor>Recent: {lastActivity || 'No recent activity'}</Text>
-      </Box>
+      <Text dimColor>/ for commands · esc to stop · ctrl+c to quit</Text>
     </Box>
   );
 }
 
-export function Divider() {
-  return <Text dimColor>{'─'.repeat(BOX_WIDTH)}</Text>;
+export function Band({text}) {
+  const w = width();
+  const line = ` ${String(text).replace(/\s+/g, ' ')} `;
+  const size = Math.ceil(line.length / w) * w;
+  return <Text backgroundColor={BAND}>{line.padEnd(size)}</Text>;
 }
 
-const SPINNER_FRAMES = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢'];
-const THINKING_VERBS = [
-  'Cogitating', 'Percolating', 'Ruminating', 'Ideating',
-  'Synthesizing', 'Moonwalking', 'Shenaniganing', 'Calibrating',
-  'Harmonizing', 'Distilling', 'Orchestrating', 'Pondering'
-];
+function firstList(result) {
+  if (Array.isArray(result)) {
+    return result;
+  }
+  if (result && typeof result === 'object') {
+    for (const value of Object.values(result)) {
+      if (Array.isArray(value)) {
+        return value;
+      }
+    }
+  }
+  return null;
+}
 
-export function Thinking() {
-  const [frame, setFrame] = useState(0);
-  const [verb] = useState(
-    () => THINKING_VERBS[Math.floor(Math.random() * THINKING_VERBS.length)]
-  );
+function textOf(result) {
+  if (typeof result === 'string') {
+    return result;
+  }
+  if (result && typeof result === 'object') {
+    for (const key of ['content', 'text', 'stdout', 'output']) {
+      if (typeof result[key] === 'string') {
+        return result[key];
+      }
+    }
+  }
+  return '';
+}
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      setFrame(f => (f + 1) % SPINNER_FRAMES.length);
-    }, 120);
-    return () => clearInterval(id);
-  }, []);
+function summarize(event) {
+  const result = event.result;
+  if (result == null) {
+    return 'Done';
+  }
+  const list = firstList(result);
+  const text = textOf(result);
+  switch (event.tool) {
+    case 'read_file':
+      return text ? `Read ${text.split('\n').length} lines` : 'Read';
+    case 'list_files':
+      return list ? `${list.length} entries` : 'Listed';
+    case 'search_code':
+      return list ? `${list.length} matches` : 'Searched';
+    case 'web_search':
+      return list ? `${list.length} results` : 'Searched';
+    case 'write_file':
+      return 'Written';
+    case 'run_command': {
+      const code = result.exitCode ?? result.code ?? result.status;
+      const line = text.trim().split('\n')[0] || '';
+      return [code !== undefined ? `exit ${code}` : 'Done', clip(line, 50)]
+        .filter(Boolean)
+        .join(' · ');
+    }
+    default:
+      return text ? clip(text, 70) : clip(JSON.stringify(result), 70);
+  }
+}
 
+function ToolLine({event}) {
+  const label = toolLabel(event.tool, event.arguments);
+  const result = event.result;
+  const errorText =
+    result && typeof result === 'object' && result.error
+      ? String(result.error)
+      : '';
+  const denied = event.phase === 'denied';
+  const failed = denied || Boolean(errorText);
+  let detail = '';
+  if (denied) {
+    detail = 'Denied';
+  } else if (errorText) {
+    detail = `Error: ${clip(errorText, 70)}`;
+  } else if (event.phase === 'requested') {
+    detail = 'Running';
+  } else {
+    detail = summarize(event);
+  }
   return (
-    <Box marginLeft={2} marginBottom={1}>
-      <Text color={ACCENT}>
-        {SPINNER_FRAMES[frame]} {verb}...
+    <Box flexDirection="column">
+      <Text>
+        <Text color={failed ? 'red' : ACCENT}>● </Text>
+        <Text bold>{label}</Text>
       </Text>
+      <Text dimColor>{'  ⎿  ' + detail}</Text>
     </Box>
   );
 }
 
-export function ToolCard({event}) {
-  const status =
-    event.phase === 'completed'
-      ? '✓ completed'
-      : event.phase === 'denied'
-        ? '✗ denied'
-        : '● running';
-
-  const statusColor =
-    event.phase === 'completed'
-      ? SUCCESS
-      : event.phase === 'denied'
-        ? 'red'
-        : ACCENT;
-
-  const icon = TOOL_ICONS[event.tool] || '⚙';
-  const args = event.arguments || {};
-
-  let target = '';
-  if (args.path) target = args.path;
-  else if (args.query) target = `"${args.query}"`;
-  else if (args.command) target = args.command;
-  else target = JSON.stringify(args);
-
-  return (
-    <Box flexDirection="column" marginLeft={2} marginBottom={1}>
-      <Box>
-        <Text color={HOT_PINK}>┌─ </Text>
-        <Text>{icon} </Text>
-        <Text bold>{event.tool}</Text>
-      </Box>
-
-      <Box marginLeft={3}>
-        <Text dimColor>{target}</Text>
-      </Box>
-
-      <Box>
-        <Text color={HOT_PINK}>└─ </Text>
-        <Text color={statusColor} bold>{status}</Text>
-      </Box>
-    </Box>
-  );
-}
-
-export function ApprovalCard({approval, showDetail}) {
-  if (!approval) return null;
-
-  const args = approval.arguments || {};
-  const icon = TOOL_ICONS[approval.tool] || '⚙';
-  const isRisky = approval.tool === 'run_command';
-
-  return (
-    <Box
-      flexDirection="column"
-      marginLeft={2}
-      marginBottom={1}
-      borderStyle="round"
-      borderColor={LAVENDER}
-      paddingX={1}
-    >
-      <Text bold color={LAVENDER}>
-        {isRisky ? 'Confirm before proceeding' : 'Permission required'}
+function Reply({text}) {
+  const lines = String(text || '').split('\n');
+  const out = [];
+  let inCode = false;
+  lines.forEach((line, i) => {
+    if (line.trim().startsWith('```')) {
+      inCode = !inCode;
+      return;
+    }
+    out.push(
+      <Text key={i} color={inCode ? '#E5C07B' : undefined}>
+        {line || ' '}
       </Text>
-
-      <Box marginTop={1}>
-        <Text>JOEBOT wants to use </Text>
-        <Text bold color={ACCENT}>{icon} {approval.tool}</Text>
-      </Box>
-
-      {args.path && (
-        <Box>
-          <Text dimColor>File: </Text>
-          <Text>{args.path}</Text>
-        </Box>
-      )}
-
-      {args.command && (
-        <Box flexDirection="column">
-          <Box>
-            <Text dimColor>Command: </Text>
-            <Text bold>{args.command}</Text>
-          </Box>
-          {showDetail && (
-            <Box marginTop={1} flexDirection="column">
-              <Text dimColor>Runs inside \~/joebot · cannot reach outside paths</Text>
-              <Text dimColor>Destructive patterns are blocked</Text>
-            </Box>
-          )}
-        </Box>
-      )}
-
-      <Box marginTop={1}>
-        <Text bold color="green">[Y]</Text>
-        <Text> Allow   </Text>
-        <Text bold color="red">[N]</Text>
-        <Text> Deny</Text>
-        {isRisky && (
-          <>
-            <Text>   </Text>
-            <Text bold color={ACCENT}>[D]</Text>
-            <Text> Detail</Text>
-          </>
-        )}
-      </Box>
-
-      <Box>
-        <Text dimColor>Y / N / Esc · D for detail on run_command</Text>
-      </Box>
+    );
+  });
+  return (
+    <Box flexDirection="column" flexGrow={1}>
+      {out}
     </Box>
   );
 }
 
 export function Message({item}) {
-  const isGreeting = Boolean(item.greeting);
-  const renderedReply = item.reply ? renderMarkdown(item.reply) : '';
-  const hasInput = item.input !== null && item.input !== undefined;
-
   return (
     <Box flexDirection="column" marginBottom={1}>
-      {hasInput && (
+      <Band text={item.input} />
+      {(item.events || []).map((event, i) => (
+        <ToolLine key={i} event={event} />
+      ))}
+      {item.reply ? (
         <Box>
-          <Text color="white" bold>❯ </Text>
-          <Text color="white">{item.input}</Text>
+          <Text color={ACCENT}>● </Text>
+          <Reply text={item.reply} />
         </Box>
-      )}
-
-      {item.busy && <Thinking />}
-
-      {item.events?.map((event, index) => (
-        <ToolCard key={`\( {event.tool}- \){index}`} event={event} />
-      ))}
-
-      {item.reply && (
-        <Box
-          flexDirection="column"
-          marginLeft={2}
-          marginTop={hasInput ? 1 : 0}
-        >
-          <Text bold color={ACCENT}>
-            {isGreeting ? '🙂 JOEBOT · welcome back' : '🙂 JOEBOT'}
-          </Text>
-
-          <Box marginTop={1}>
-            <Text>{renderedReply}</Text>
-          </Box>
-        </Box>
-      )}
+      ) : null}
     </Box>
   );
 }
 
-export function CommandMenu({query, selected}) {
-  if (!query.startsWith('/')) return null;
-
-  const matches = COMMANDS.filter(([command]) =>
-    command.startsWith(query.toLowerCase())
+function Working({label}) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 150);
+    return () => clearInterval(timer);
+  }, []);
+  const seconds = Math.floor((tick * 150) / 1000);
+  return (
+    <Text>
+      <Text color={CYAN}>{FRAMES[tick % FRAMES.length]} </Text>
+      <Text dimColor>
+        {label} {seconds}s
+      </Text>
+    </Text>
   );
+}
 
-  if (!matches.length) {
-    return (
-      <Box marginLeft={2} marginTop={1}>
-        <Text dimColor>No matching commands</Text>
-      </Box>
-    );
+export function Live({item, paused}) {
+  const shown = (item.events || []).slice(-4);
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Band text={item.input} />
+      {shown.map((event, i) => (
+        <ToolLine key={i} event={event} />
+      ))}
+      {paused ? null : <Working label="Working" />}
+    </Box>
+  );
+}
+
+function detailOf(tool, args) {
+  let text = '';
+  if (tool === 'run_command') {
+    text = String(args.command || '');
+  } else if (tool === 'write_file') {
+    const body = String(args.content || '').split('\n').slice(0, 6).join('\n');
+    text = `${args.path || ''}\n${body}`;
+  } else {
+    text = JSON.stringify(args);
   }
+  return text.slice(0, 500);
+}
 
+export function ApprovalCard({approval, choice, showDetail}) {
+  const args = argsOf(approval);
+  const risky = approval.tool === 'run_command';
+  const open = risky ? showDetail : true;
   return (
-    <Box flexDirection="column" marginLeft={2} marginTop={1} marginBottom={1}>
-      {matches.map(([command, description], index) => (
-        <Box key={command}>
-          <Text color={index === selected ? ACCENT : undefined}>
-            {index === selected ? '❯ ' : '  '}
-          </Text>
-          <Text bold={index === selected}>{command}</Text>
-          <Text dimColor>{'  '}{description}</Text>
-        </Box>
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="yellow"
+      paddingX={1}
+      marginBottom={1}
+    >
+      <Text bold color="yellow">
+        {risky ? 'Run this command?' : 'Allow this action?'}
+      </Text>
+      <Text>{toolLabel(approval.tool, args)}</Text>
+      {open ? <Text dimColor>{detailOf(approval.tool, args)}</Text> : null}
+      {APPROVAL_OPTIONS.map((label, i) => (
+        <Text key={i} color={i === choice ? ACCENT : undefined}>
+          {i === choice ? '❯ ' : '  '}
+          {i + 1}. {label}
+        </Text>
       ))}
+      <Text dimColor>
+        enter select · y once · a session · n deny{risky ? ' · d details' : ''}
+      </Text>
     </Box>
   );
 }
 
-export function StatusBar({busy, context, approval}) {
+export function CommandMenu({matches, selected}) {
+  if (!matches.length) {
+    return null;
+  }
+  const start = Math.max(0, Math.min(selected - 2, matches.length - 6));
+  const view = matches.slice(start, start + 6);
   return (
-    <Box flexDirection="column" marginTop={1}>
-      <Divider />
+    <Box flexDirection="column">
+      {view.map(([name, description], i) => {
+        const active = start + i === selected;
+        return (
+          <Text key={name} color={active ? ACCENT : undefined} dimColor={!active}>
+            {name.padEnd(14)} {description}
+          </Text>
+        );
+      })}
+    </Box>
+  );
+}
 
-      <Box>
-        <Text dimColor>\~/joebot</Text>
-        <Text dimColor> · </Text>
-        <Text color={approval ? 'yellow' : busy ? ACCENT : 'green'}>
-          {approval ? 'waiting' : busy ? 'working' : 'ready'}
+export function Prompt({text, cursor, active, placeholder}) {
+  const before = text.slice(0, cursor);
+  const at = text.slice(cursor, cursor + 1);
+  const after = text.slice(cursor + 1);
+  return (
+    <Box>
+      <Text color={ACCENT} bold>❯ </Text>
+      {text.length === 0 ? (
+        <Text>
+          <Text inverse={active}> </Text>
+          <Text dimColor>{placeholder}</Text>
         </Text>
-        <Text dimColor> · context {context}</Text>
-      </Box>
+      ) : (
+        <Text>
+          {before}
+          <Text inverse={active}>{at || ' '}</Text>
+          {after}
+        </Text>
+      )}
+    </Box>
+  );
+}
 
-      <Box>
-        <Text dimColor>Enter send · / commands · ? shortcuts · Ctrl+C exit</Text>
-      </Box>
+export function Rule() {
+  return <Text dimColor>{'─'.repeat(Math.max(10, width() - 1))}</Text>;
+}
+
+export function Footer({provider, model, context, approval}) {
+  const status = [provider, model, context ? `${context} msgs` : null]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>
+        {approval
+          ? 'enter to select · esc to deny'
+          : '/ commands · esc stop · ctrl+c quit'}
+      </Text>
+      {status ? <Text dimColor>{status}</Text> : null}
     </Box>
   );
 }
