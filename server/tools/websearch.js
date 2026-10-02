@@ -1,6 +1,8 @@
+import {pickQuery} from './exactquery.js';
 const MAX_RESULTS = 5;
 
-export async function searchWeb(query) {
+export async function searchWeb(modelQuery) {
+  const query = pickQuery(modelQuery);
   const apiKey = process.env.TAVILY_API_KEY;
 
   if (!apiKey) {

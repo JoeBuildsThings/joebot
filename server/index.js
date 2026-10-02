@@ -1,3 +1,4 @@
+import {setLastUserText} from './tools/exactquery.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -113,6 +114,7 @@ app.post('/api/chats/:id/messages', async (req, res) => {
       return res.status(400).json({error: 'Message is required'});
     }
 
+    setLastUserText(message);
     const memorySaved = Boolean(extractExplicitMemory(message));
 
     const messages = [

@@ -1,3 +1,4 @@
+import {setLastUserText} from '../server/tools/exactquery.js';
 import {generate} from '../server/ai/router.js';
 import {tools, executeTool, getToolDefinitions} from '../server/tools/index.js';
 
@@ -94,6 +95,7 @@ class Agent {
     }
 
     this.messages.push({role: 'user', content: input.trim()});
+    setLastUserText(input.trim());
     this.trimHistory();
 
     const toolCalls = [];
