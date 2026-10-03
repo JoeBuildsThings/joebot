@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" width="900" height="360" role="img" aria-labelledby="t d">
+  <title id="t">JOEBOT architecture</title>
+  <desc id="d">A request goes from you to the agent loop, which calls tools through an approval gate and asks the router for a model, trying Puter, Groq, OpenRouter and Gemini in order.</desc>
+  <rect width="900" height="360" rx="16" fill="#0A1020"/>
+  <path d="M150 165H210" fill="none" stroke="#3B6AA8" stroke-width="2" stroke-dasharray="6 6"><animate attributeName="stroke-dashoffset" from="0" to="-24" dur="1.2s" repeatCount="indefinite"/></path>
+  <path d="M380 165H450" fill="none" stroke="#3B6AA8" stroke-width="2" stroke-dasharray="6 6"><animate attributeName="stroke-dashoffset" from="0" to="-24" dur="1.2s" repeatCount="indefinite"/></path>
+  <path d="M295 200V222" fill="none" stroke="#3B6AA8" stroke-width="2" stroke-dasharray="6 6"><animate attributeName="stroke-dashoffset" from="0" to="-24" dur="1.2s" repeatCount="indefinite"/></path>
+  <path d="M295 258V288" fill="none" stroke="#3B6AA8" stroke-width="2" stroke-dasharray="6 6"><animate attributeName="stroke-dashoffset" from="0" to="-24" dur="1.2s" repeatCount="indefinite"/></path>
+  <path d="M580 165C615 165 615 58 650 58" fill="none" stroke="#3B6AA8" stroke-width="2" stroke-dasharray="6 6"><animate attributeName="stroke-dashoffset" from="0" to="-24" dur="1.2s" repeatCount="indefinite"/></path>
+  <path d="M580 165C615 165 615 118 650 118" fill="none" stroke="#3B6AA8" stroke-width="2" stroke-dasharray="6 6"><animate attributeName="stroke-dashoffset" from="0" to="-24" dur="1.2s" repeatCount="indefinite"/></path>
+  <path d="M580 165C615 165 615 178 650 178" fill="none" stroke="#3B6AA8" stroke-width="2" stroke-dasharray="6 6"><animate attributeName="stroke-dashoffset" from="0" to="-24" dur="1.2s" repeatCount="indefinite"/></path>
+  <path d="M580 165C615 165 615 238 650 238" fill="none" stroke="#3B6AA8" stroke-width="2" stroke-dasharray="6 6"><animate attributeName="stroke-dashoffset" from="0" to="-24" dur="1.2s" repeatCount="indefinite"/></path>
+  <rect x="30" y="130" width="120" height="70" rx="12" fill="#0F1B2D" stroke="#2A4A7A" stroke-width="2"/><text x="90" y="163" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#E6EDF3">You</text><text x="90" y="182" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#8B949E">terminal or web</text>
+  <rect x="210" y="130" width="170" height="70" rx="12" fill="#0F1B2D" stroke="#2A4A7A" stroke-width="2"/><text x="295" y="163" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#E6EDF3">Agent loop</text><text x="295" y="182" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#8B949E">up to 8 steps</text>
+  <rect x="450" y="130" width="130" height="70" rx="12" fill="#0F1B2D" stroke="#2A4A7A" stroke-width="2"/><text x="515" y="163" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#E6EDF3">Router</text><text x="515" y="182" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#8B949E">fallback order</text>
+  <rect x="650" y="38" width="220" height="40" rx="10" fill="#0F1B2D" stroke="#2A4A7A" stroke-width="2"/>
+  <text x="760" y="63" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#E6EDF3">1  Puter</text>
+  <rect x="650" y="98" width="220" height="40" rx="10" fill="#0F1B2D" stroke="#2A4A7A" stroke-width="2"/>
+  <text x="760" y="123" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#E6EDF3">2  Groq</text>
+  <rect x="650" y="158" width="220" height="40" rx="10" fill="#0F1B2D" stroke="#2A4A7A" stroke-width="2"/>
+  <text x="760" y="183" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#E6EDF3">3  OpenRouter</text>
+  <rect x="650" y="218" width="220" height="40" rx="10" fill="#0F1B2D" stroke="#2A4A7A" stroke-width="2"/>
+  <text x="760" y="243" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="15" fill="#E6EDF3">4  Gemini</text>
+  <rect x="225" y="222" width="140" height="36" rx="10" fill="#1E1A0E" stroke="#E5C07B" stroke-width="2"/>
+  <text x="295" y="245" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#E5C07B">Approval gate</text>
+  <text x="378" y="245" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#E5C07B">write, run and composio ask first</text>
+  <rect x="130" y="288" width="330" height="52" rx="12" fill="#0F1B2D" stroke="#2A4A7A" stroke-width="2"/><text x="295" y="312" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#E6EDF3">Tools</text><text x="295" y="331" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#8B949E">read  list  search  web  remember  forget  write  run  composio</text>
+  <circle r="5" fill="#2EE6E6"><animateMotion dur="2.4s" begin="0.0s" repeatCount="indefinite" path="M150 165H210"/></circle>
+  <circle r="5" fill="#2EE6E6"><animateMotion dur="2.4s" begin="0.8s" repeatCount="indefinite" path="M380 165H450"/></circle>
+  <circle r="5" fill="#2EE6E6"><animateMotion dur="2.4s" begin="1.6s" repeatCount="indefinite" path="M295 200V222"/></circle>
+  <circle r="5" fill="#2EE6E6"><animateMotion dur="2.4s" begin="2.0s" repeatCount="indefinite" path="M295 258V288"/></circle>
+  <circle r="5" fill="#2EE6E6"><animateMotion dur="2.4s" begin="1.2s" repeatCount="indefinite" path="M580 165C615 165 615 58 650 58"/></circle>
+  <text x="30" y="40" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#8B949E">request flow</text>
+  <text x="650" y="26" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#8B949E">tried in this order</text>
+</svg>
