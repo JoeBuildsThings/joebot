@@ -6,9 +6,9 @@ joebot: a personal terminal AI assistant. Node.js CLI and server, tool calling a
 
 ## Environment constraints
 
-- Runs entirely on Termux on Android, no desktop terminal available during development.
-- All development happens on a phone using Acode or termux cat and EOF heredocs. Assume no nano, no vim workflow, no mouse.
-- Test commands must be short enough to paste and rerun easily on mobile.
+* Runs in Termux on Android.
+* Prefer short commands that are easy to paste and rerun. File edits use cat with EOF heredocs.
+* Assume no nano or vim workflow and no mouse.
 
 ## Code style
 
@@ -27,7 +27,7 @@ joebot: a personal terminal AI assistant. Node.js CLI and server, tool calling a
 ## Known constraints in progress
 
 - Gemini schema compatibility: Gemini rejects additionalProperties and $schema keys in function parameters. Any new tool must go through the same stripping step gemini.js already applies, or a new shared schema sanitizer if one gets added later.
-- Model fallback only triggers on network errors and known temporary failure messages, not on empty or low quality replies. Treat this as a known gap, not a bug to silently patch without discussion.
+* Model fallback moves to the next provider on any provider error, including empty results, and reports every provider failure if all of them fail. It does not judge low quality replies.
 
 ## Before committing
 

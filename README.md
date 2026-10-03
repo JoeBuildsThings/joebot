@@ -109,7 +109,7 @@ Or start the local web app and open http://127.0.0.1:8765:
 npm start
 ```
 
-Optional: run `npm link` to get the `joebot` command. The launcher currently expects the project at `~/joebot` in Termux.
+Optional: run `npm link` to get the `joebot` command, which loads the `.env` from the project folder.
 
 <img src="assets/divider.svg" width="100%" alt=""/>
 
@@ -129,7 +129,7 @@ public/         web interface
 ## Status and known limits
 
 * Active development, with no automated tests yet.
-* Fallback triggers on network errors and known temporary failures, not on empty or weak replies.
+* Fallback moves to the next provider when one fails, and reports every error if all of them fail. It does not judge weak replies.
 * Terminal chats are not saved between sessions yet.
 * Termux on Android is the only platform tested so far.
 
@@ -146,3 +146,7 @@ public/         web interface
 ## Author
 
 Built by Adebiyi Joseph Ayomide ([JoeBuildsThings](https://github.com/JoeBuildsThings)). Portfolio: [joebuildsthings.netlify.app](https://joebuildsthings.netlify.app).
+
+## License
+
+ISC. See the [LICENSE](LICENSE) file.

@@ -1,15 +1,28 @@
 {
   "name": "joebot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Terminal AI agent with tool calling, approval gated file and shell access, web search and multi provider fallback.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server/index.js",
     "dev": "nodemon server/index.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "ai-agent",
+    "llm",
+    "tool-calling",
+    "cli",
+    "terminal",
+    "nodejs",
+    "termux",
+    "ink",
+    "groq",
+    "openrouter",
+    "gemini",
+    "composio"
+  ],
+  "author": "Adebiyi Joseph Ayomide",
   "license": "ISC",
   "type": "module",
   "dependencies": {
@@ -30,5 +43,13 @@
   },
   "bin": {
     "joebot": "bin/joebot.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoeBuildsThings/joebot.git"
+  },
+  "homepage": "https://github.com/JoeBuildsThings/joebot#readme",
+  "bugs": {
+    "url": "https://github.com/JoeBuildsThings/joebot/issues"
   }
 }

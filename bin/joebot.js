@@ -9,14 +9,14 @@ const __dirname = path.dirname(__filename);
 
 const app = path.join(__dirname, '..', 'cli', 'tui', 'App.jsx');
 const tsx = path.join(__dirname, '..', 'node_modules', '.bin', 'tsx');
-const envFile = '/data/data/com.termux/files/home/joebot/.env';
+const envFile = path.join(__dirname, '..', '.env');
 
 const child = spawn(
   tsx,
   [`--env-file=${envFile}`, app],
   {
     stdio: 'inherit',
-    env: process.env
+    env: {...process.env, NODE_NO_WARNINGS: '1'}
   }
 );
 
