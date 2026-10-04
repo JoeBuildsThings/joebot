@@ -1,6 +1,5 @@
 import React, {useEffect, useState} from 'react';
 import {Box, Text} from 'ink';
-import {platformName} from '../../server/platform.js';
 
 export const ACCENT = '#4D9DFF';
 export const CYAN = '#2EE6E6';
@@ -21,7 +20,6 @@ export const COMMANDS = [
   ['/permissions', 'Approvals for this session'],
   ['/revoke', 'Clear session approvals'],
   ['/memory', 'Saved memories'],
-  ['/skills', 'Saved skills'],
   ['/chats', 'Recent chats'],
   ['/resume', 'Go back to a chat, like /resume 1'],
   ['/new', 'Start a fresh chat'],
@@ -65,10 +63,6 @@ export function toolLabel(tool, args) {
       return `Write(${clip(a.path, 50)})`;
     case 'run_command':
       return `Run(${clip(a.command, 50)})`;
-    case 'use_skill':
-      return 'Skill(' + clip(a.name, 40) + ')';
-    case 'save_skill':
-      return 'Save skill(' + clip(a.name, 40) + ')';
     case 'remember':
       return 'Remember';
     case 'forget':
@@ -94,7 +88,7 @@ export function Welcome() {
         ))}
         <Text> </Text>
         <Text bold>Welcome to {NAME}</Text>
-        <Text dimColor>{'Your personal AI for ' + platformName}</Text>
+        <Text dimColor>Your personal AI for Termux</Text>
         <Text dimColor>{process.cwd()}</Text>
       </Box>
       <Text dimColor>/ for commands · esc to stop · ctrl+c to quit</Text>
@@ -163,10 +157,6 @@ function summarize(event) {
         .filter(Boolean)
         .join(' · ');
     }
-    case 'use_skill':
-      return 'Skill loaded';
-    case 'save_skill':
-      return 'Skill saved';
     case 'remember':
       return 'Saved';
     case 'forget':
@@ -276,49 +266,22 @@ function Working({label}) {
   );
 }
 
-function wrapRows(text, width) {
-  const rows = [];
-  for (const raw of String(text).split('\n')) {
-    let line = raw.replace(/\t/g, '  ');
-    if (!line) {
-      rows.push('');
-      continue;
-    }
-    while (line.length > width) {
-      let cut = line.lastIndexOf(' ', width);
-      if (cut < Math.floor(width / 2)) {
-        cut = width;
-      }
-      rows.push(line.slice(0, cut).replace(/\s+$/, ''));
-      line = line.slice(cut).replace(/^\s+/, '');
-    }
-    rows.push(line);
-  }
-  return rows;
-}
-
 export function Live({item, paused, text}) {
-  const screen = process.stdout.rows || 24;
-  const avail = Math.max(4, screen - 8);
-  const events = item.events || [];
-  const showTools =
-    paused || avail < 9 ? 0 : Math.min(events.length, avail >= 20 ? 2 : 1);
-  const budget = paused ? 0 : Math.max(0, Math.min(14, avail - 2 - showTools * 3));
-  const w = Math.max(10, width() - 4);
-  const rows = text
-    ? wrapRows(text, w).filter(row => !row.trim().startsWith('```'))
-    : [];
-  const tail = budget >= 2 ? rows.slice(Math.max(0, rows.length - budget)) : [];
-  const shown = events.slice(Math.max(0, events.length - showTools));
+  const rows = text ? text.split('\n') : [];
+  const tail = rows.slice(Math.max(0, rows.length - 12)).join('\n');
+  const shown = (item.events || []).slice(-4);
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text dimColor>{'❯ ' + clip(item.input, w)}</Text>
+      <Band text={item.input} />
       {shown.map((event, i) => (
         <ToolLine key={i} event={event} />
       ))}
-      {tail.map((row, i) => (
-        <Text key={i}>{'  ' + row}</Text>
-      ))}
+      {tail ? (
+        <Box>
+          <Text color={ACCENT}>● </Text>
+          <Reply text={tail} />
+        </Box>
+      ) : null}
       {paused ? null : <Working label="Working" />}
     </Box>
   );
@@ -340,34 +303,6 @@ function detailOf(tool, args) {
 export function ApprovalCard({approval, choice, showDetail}) {
   const args = argsOf(approval);
   const risky = approval.tool === 'run_command';
-  const screen = process.stdout.rows || 24;
-  if (screen < 22) {
-    const labels = ['1 once', '2 session', '3 no'];
-    return (
-      <Box
-        flexDirection="column"
-        borderStyle="round"
-        borderColor="yellow"
-        paddingX={1}
-        marginBottom={1}
-      >
-        <Text>
-          <Text bold color="yellow">
-            {risky ? 'Run? ' : 'Allow? '}
-          </Text>
-          {clip(toolLabel(approval.tool, args), Math.max(10, width() - 16))}
-        </Text>
-        <Text>
-          {labels.map((label, i) => (
-            <Text key={i} color={i === choice ? ACCENT : undefined} bold={i === choice}>
-              {label}
-              {i < 2 ? '   ' : ''}
-            </Text>
-          ))}
-        </Text>
-      </Box>
-    );
-  }
   const open = risky ? showDetail : true;
   return (
     <Box

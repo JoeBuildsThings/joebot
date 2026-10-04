@@ -1,5 +1,7 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Box, Static, useApp, useInput, render} from 'ink';
+import {listSkills} from '../../server/ai/skills.js';
+import {listSessions, loadSession, saveSession, newSessionId, ago} from '../sessions.js';
 
 import {
   COMMANDS,
@@ -11,13 +13,17 @@ import {
   Prompt,
   Rule,
   Footer,
-  argsOf
+  argsOf,
+  detailOfEvent
 } from './components.jsx';
 
 const WELCOME = {id: 'welcome', welcome: true};
 const DECISIONS = ['once', 'session', 'deny'];
 
 function sessionKey(request) {
+  if (request.tool === 'save_skill') {
+    return null;
+  }
   const args = argsOf(request);
   if (request.tool === 'run_command') {
     const words = String(args.command || '')
@@ -55,6 +61,7 @@ function App() {
   const events = useRef([]);
   const session = useRef(new Set());
   const history = useRef([]);
+  const sessionRef = useRef({id: newSessionId(), created: Date.now()});
   const histIndex = useRef(-1);
   const busyRef = useRef(false);
   const interrupted = useRef(false);
@@ -167,6 +174,50 @@ function App() {
     }, 80);
     return () => clearInterval(timer);
   }, [busy]);
+
+  function shrinkArgs(args) {
+    const out = {};
+    for (const [key, value] of Object.entries(args || {})) {
+      out[key] =
+        typeof value === 'string' && value.length > 200
+          ? value.slice(0, 200) + '…'
+          : value;
+    }
+    return out;
+  }
+
+  function compactItem(item) {
+    return {
+      id: item.id,
+      input: item.input,
+      reply: item.reply,
+      events: (item.events || []).map(event =>
+        event.phase === 'note'
+          ? {phase: 'note', text: event.text}
+          : {
+              phase: event.phase,
+              tool: event.tool,
+              arguments: shrinkArgs(event.arguments),
+              detail: detailOfEvent(event)
+            }
+      )
+    };
+  }
+
+  function persist(list) {
+    const target = agentRef.current;
+    const real = list.filter(item => !item.welcome && item.input);
+    if (!target || !real.length) {
+      return;
+    }
+    saveSession({
+      id: sessionRef.current.id,
+      created: sessionRef.current.created,
+      title: String(real[0].input).replace(/\s+/g, ' ').slice(0, 48),
+      messages: target.messages,
+      items: real.map(compactItem)
+    });
+  }
 
   function answer(decision) {
     const pending = resolver.current;
@@ -304,7 +355,7 @@ function App() {
     {isActive: !approval}
   );
 
-  async function runCommand(command) {
+  async function runCommand(command, arg = '') {
     switch (command) {
       case '/exit':
         exit();
@@ -313,9 +364,73 @@ function App() {
       case '/clear':
         process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
         if (agent?.clear) agent.clear();
+        // new session on clear
+        sessionRef.current = {id: newSessionId(), created: Date.now()};
         setItems([WELCOME]);
         setEpoch(value => value + 1);
         return;
+
+      case '/chats': {
+        const list = listSessions().slice(0, 12);
+        say(
+          command,
+          list.length
+            ? list
+                .map(
+                  (s, i) =>
+                    `${String(i + 1).padStart(2)}. ${s.title} (${ago(s.updated)}, ${s.count} turns)`
+                )
+                .join('\n') + '\n\nGo back to one with /resume 1'
+            : 'No saved chats yet. They save automatically after each reply.'
+        );
+        return;
+      }
+
+      case '/resume': {
+        const list = listSessions();
+        const pick = /^\d+$/.test(arg)
+          ? list[Number(arg) - 1]
+          : list.find(s => arg && s.id.startsWith(arg));
+        const target = agentRef.current;
+        if (!pick) {
+          say(command, 'Pick one from /chats, like /resume 1');
+          return;
+        }
+        if (!target) {
+          say(command, 'Agent is still starting. Try again in a moment.');
+          return;
+        }
+        const data = loadSession(pick.id);
+        if (!data) {
+          say(command, 'That chat could not be read.');
+          return;
+        }
+        process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+        target.messages = Array.isArray(data.messages) ? data.messages : [];
+        sessionRef.current = {id: data.id, created: data.created || Date.now()};
+        setItems([WELCOME, ...(data.items || [])]);
+        setEpoch(value => value + 1);
+        return;
+      }
+
+      case '/new':
+        process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+        if (agent?.clear) agent.clear();
+        sessionRef.current = {id: newSessionId(), created: Date.now()};
+        setItems([WELCOME]);
+        setEpoch(value => value + 1);
+        return;
+
+      case '/skills': {
+        const list = listSkills();
+        say(
+          command,
+          list.length
+            ? list.map(s => s.name.padEnd(16) + ' ' + s.source + '  ' + s.description).join('\n')
+            : 'No skills yet.'
+        );
+        return;
+      }
 
       case '/help':
         say(command, COMMANDS.map(([name, text]) => `${name.padEnd(14)} ${text}`).join('\n'));
@@ -409,7 +524,8 @@ function App() {
     setSelected(0);
 
     if (text.startsWith('/')) {
-      await runCommand(text.toLowerCase());
+      const parts = text.split(/\s+/);
+      await runCommand(parts[0].toLowerCase(), parts.slice(1).join(' '));
       return;
     }
 
@@ -436,7 +552,11 @@ function App() {
     } catch (error) {
       reply = `Agent error: ${error.message}`;
     } finally {
-      setItems(previous => [...previous, {id, input: text, events: events.current, reply}]);
+      setItems(previous => {
+        const next = [...previous, {id, input: text, events: events.current, reply}];
+        persist(next);
+        return next;
+      });
       busyRef.current = false;
       bufRef.current = '';
       setStream('');

@@ -1,6 +1,8 @@
 import models from '../config/models.js';
 import personality from './personality.js';
+import {environmentBlock} from '../platform.js';
 import * as profileMemory from './profileMemory.js';
+import {skillsBlock} from './skills.js';
 
 import * as gemini from './providers/gemini.js';
 import * as groq from './providers/groq.js';
@@ -22,7 +24,7 @@ function buildMemoryBlock() {
 }
 
 function buildSystemPrompt(systemAddition = '') {
-  const parts = [personality, buildMemoryBlock(), systemAddition];
+  const parts = [personality, environmentBlock(), buildMemoryBlock(), skillsBlock(), systemAddition];
   return parts.filter(Boolean).join('\n\n');
 }
 

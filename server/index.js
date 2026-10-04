@@ -1,3 +1,4 @@
+import {platformName} from './platform.js';
 import {setLastUserText} from './tools/exactquery.js';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -40,7 +41,7 @@ app.get('/api/status', (req, res) => {
   res.json({
     name: 'JOEBOT',
     status: 'online',
-    runtime: 'Termux',
+    runtime: platformName,
     providers: ['gemini', 'groq', 'openrouter'],
     memory: {
       enabled: true,
